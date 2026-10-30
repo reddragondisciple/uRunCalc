@@ -1,0 +1,940 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(const CalculatorApp());
+}
+
+class CalculatorApp extends StatelessWidget {
+  const CalculatorApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.black,
+      ),
+      home: const CalculatorPage(),
+    );
+  }
+}
+
+class CalculatorPage extends StatefulWidget {
+  const CalculatorPage({super.key});
+
+  @override
+  State<CalculatorPage> createState() => _CalculatorPageState();
+}
+
+class _CalculatorPageState extends State<CalculatorPage> {
+  String _expression = '';
+  String? _message;
+
+  final List<String> _history = [];
+  final Set<String> _redKeys = {};
+
+  Timer? _flashTimer;
+
+  Rational? _exactResult;
+  bool _justEvaluated = false;
+
+  static const List<String> _keys = [
+    'C', '⌫', '(', ')',
+    '√', '^', '000', '÷',
+    '7', '8', '9', '×',
+    '4', '5', '6', '-',
+    '1', '2', '3', '+',
+    '0', '.', '%', '=',
+  ];
+
+  static final RegExp _exactValuePattern =
+  RegExp(r'@(-?\d+):(\d+);');
+
+  static final RegExp _numberPattern =
+  RegExp(r'\d+(?:\.\d*)?|\.\d+');
+
+  String _display(String value) {
+    // Внутренний точный результат отображается как десятичное число,
+    // но в выражении остаётся числителем/знаменателем для точных вычислений.
+    var text = value.replaceAllMapped(_exactValuePattern, (match) {
+      final numerator = BigInt.parse(match.group(1)!);
+      final denominator = BigInt.parse(match.group(2)!);
+      return Rational(numerator, denominator).toDisplayString();
+    });
+
+    text = text.replaceAll('sqrt(', '√(');
+    text = text.replaceAll('*', '×');
+    text = text.replaceAll('/', '÷');
+
+    // Группируем только целую часть каждого числа, не меняя исходное выражение.
+    text = text.replaceAllMapped(_numberPattern, (match) {
+      final number = match.group(0)!;
+      final dotIndex = number.indexOf('.');
+      final integerPart = dotIndex == -1 ? number : number.substring(0, dotIndex);
+      final decimalPart = dotIndex == -1 ? '' : number.substring(dotIndex);
+
+      final groupedInteger = integerPart.replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'),
+        (_) => '\u2009',
+      );
+
+      return '$groupedInteger$decimalPart';
+    });
+
+    return text;
+  }
+
+  String? get _preview {
+    if (_expression.isEmpty) return null;
+
+    if (_justEvaluated && _exactResult != null) {
+      return _exactResult!.toDisplayString();
+    }
+
+    try {
+      return ExpressionParser(_expression).parse().toDisplayString();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _isDigit(String char) {
+    return RegExp(r'\d').hasMatch(char);
+  }
+
+  static bool _isOperator(String char) {
+    return char == '+' ||
+    char == '-' ||
+    char == '*' ||
+    char == '/' ||
+    char == '^';
+  }
+
+  bool get _endsWithOperand {
+    if (_expression.isEmpty) return false;
+
+    final last = _expression[_expression.length - 1];
+    return _isDigit(last) ||
+    last == ')' ||
+    last == '%' ||
+    last == ';';
+  }
+
+  String _encodeRational(Rational value) {
+    return '@${value.numerator}:${value.denominator};';
+  }
+
+  void _flash(String key) {
+    _flashTimer?.cancel();
+
+    setState(() {
+      _redKeys
+      ..clear()
+      ..add(key);
+    });
+
+    _flashTimer = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+
+      setState(() {
+        _redKeys.clear();
+      });
+    });
+  }
+
+  void _press(String key) {
+    if (key == 'C') {
+      setState(() {
+        _expression = '';
+      _message = null;
+      _exactResult = null;
+      _justEvaluated = false;
+      });
+      return;
+    }
+
+    if (key == '⌫') {
+      setState(() {
+        _message = null;
+
+        if (_justEvaluated) {
+          _justEvaluated = false;
+          _exactResult = null;
+        }
+
+        if (_expression.endsWith('sqrt(')) {
+          // Корень удаляется одним нажатием, не оставляя "sqrt".
+          _expression =
+          _expression.substring(0, _expression.length - 'sqrt('.length);
+        } else if (_expression.endsWith(';')) {
+          // Внутренний маркер точного результата удаляется целиком.
+          final markerStart = _expression.lastIndexOf('@');
+          if (markerStart >= 0) {
+            _expression = _expression.substring(0, markerStart);
+          } else if (_expression.isNotEmpty) {
+            _expression = _expression.substring(0, _expression.length - 1);
+          }
+        } else if (_expression.isNotEmpty) {
+          _expression = _expression.substring(0, _expression.length - 1);
+        }
+      });
+      return;
+    }
+
+    if (key == '=') {
+      _calculate();
+      return;
+    }
+
+    if (_justEvaluated) {
+      final startsNewExpression =
+      RegExp(r'^\d$').hasMatch(key) ||
+      key == '.' ||
+      key == '(' ||
+      key == '√' ||
+      key == '000';
+
+      setState(() {
+        if (startsNewExpression) {
+          _expression = '';
+        } else if (_exactResult != null) {
+          // Не теряем точность результата при продолжении вычисления.
+          _expression = _encodeRational(_exactResult!);
+        }
+
+        _justEvaluated = false;
+        _exactResult = null;
+      });
+    }
+
+    final accepted = switch (key) {
+      '0' || '1' || '2' || '3' || '4' || '5' || '6' || '7' || '8' || '9' =>
+      _insertDigit(key),
+      '.' => _insertDecimalPoint(),
+      '+' || '-' || '×' || '÷' || '^' => _insertOperator(key),
+      '(' => _insertOpenParenthesis(),
+      ')' => _insertCloseParenthesis(),
+      '%' => _insertPercent(),
+      '√' => _insertSquareRoot(),
+      '000' => _insertTripleZeros(),
+      _ => false,
+    };
+
+    if (!accepted) {
+      _flash(key);
+    }
+  }
+
+  bool _insertDigit(String digit) {
+    var addition = digit;
+
+    if (_expression.endsWith(')') ||
+      _expression.endsWith('%') ||
+      _expression.endsWith(';')) {
+      addition = '*$digit';
+      }
+
+      setState(() {
+        _expression += addition;
+        _message = null;
+      });
+
+    return true;
+  }
+
+  bool _insertDecimalPoint() {
+    if (_expression.endsWith(')') ||
+      _expression.endsWith('%') ||
+      _expression.endsWith(';')) {
+      return false;
+      }
+
+      var index = _expression.length - 1;
+
+    while (index >= 0 &&
+      (_isDigit(_expression[index]) || _expression[index] == '.')) {
+      if (_expression[index] == '.') return false;
+      index--;
+      }
+
+      setState(() {
+        if (_expression.isEmpty ||
+          _isOperator(_expression[_expression.length - 1]) ||
+          _expression.endsWith('(')) {
+          _expression += '0.';
+          } else {
+            _expression += '.';
+          }
+          _message = null;
+      });
+
+      return true;
+  }
+
+  bool _insertOperator(String key) {
+    final operator = switch (key) {
+      '×' => '*',
+      '÷' => '/',
+      _ => key,
+    };
+
+    if (_expression.isEmpty) {
+      if (operator != '-') return false;
+    } else {
+      final last = _expression[_expression.length - 1];
+
+      // Унарный минус разрешён в начале, после оператора и после "(".
+      if (operator == '-' && (_isOperator(last) || last == '(')) {
+        setState(() {
+          _expression += '-';
+        _message = null;
+        });
+        return true;
+      }
+
+      if (!_endsWithOperand) return false;
+    }
+
+    setState(() {
+      _expression += operator;
+      _message = null;
+    });
+
+    return true;
+  }
+
+  bool _insertOpenParenthesis() {
+    setState(() {
+      if (_endsWithOperand) {
+        _expression += '*';
+      }
+      _expression += '(';
+    _message = null;
+    });
+
+    return true;
+  }
+
+  bool _insertCloseParenthesis() {
+    if (!_endsWithOperand) return false;
+
+    var openCount = 0;
+    var closeCount = 0;
+
+    for (final char in _expression.split('')) {
+      if (char == '(') openCount++;
+      if (char == ')') closeCount++;
+    }
+
+    if (closeCount >= openCount) return false;
+
+    setState(() {
+      _expression += ')';
+    _message = null;
+    });
+
+    return true;
+  }
+
+  bool _insertPercent() {
+    if (!_endsWithOperand || _expression.endsWith('%')) {
+      return false;
+    }
+
+    setState(() {
+      _expression += '%';
+    _message = null;
+    });
+
+    return true;
+  }
+
+  bool _insertSquareRoot() {
+    setState(() {
+      if (_endsWithOperand) {
+        _expression += '*';
+      }
+      _expression += 'sqrt(';
+    _message = null;
+    });
+
+    return true;
+  }
+
+  bool _insertTripleZeros() {
+    if (!_endsWithOperand) return false;
+
+    setState(() {
+      if (_expression.endsWith(')') ||
+        _expression.endsWith('%') ||
+        _expression.endsWith(';')) {
+        _expression += '*1000';
+        } else {
+          _expression += '000';
+        }
+        _message = null;
+    });
+
+    return true;
+  }
+
+  void _calculate() {
+    try {
+      final value = ExpressionParser(_expression).parse();
+      final result = value.toDisplayString();
+
+      setState(() {
+        _history.add('${_display(_expression)} = ${_display(result)}');
+
+        // Храним последние восемь вычислений.
+        if (_history.length > 8) {
+          _history.removeAt(0);
+        }
+
+        _expression = result;
+        _exactResult = value;
+        _justEvaluated = true;
+        _message = null;
+      });
+    } catch (_) {
+      setState(() {
+        _message = 'Проверьте выражение';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _flashTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              flex: 5,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+                child: Column(
+                  children: [
+                    // История занимает свободное место и прокручивается отдельно.
+                    Expanded(
+                      child: Builder(
+                        builder: (context) {
+                          final entries = _history.reversed.toList();
+                          final count = entries.length;
+
+                          return ListView.builder(
+                            reverse: true,
+                            itemCount: count,
+                            itemBuilder: (context, index) {
+                              // Новейшая строка крупнее, более старые постепенно меньше.
+                              final fontSize = count <= 1
+                              ? 18.0
+                              : 18.0 - (8.0 * index / (count - 1));
+
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 3,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    entries[index],
+                                    textAlign: TextAlign.right,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: fontSize,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    // Текущий ввод всегда остаётся внизу поля.
+                    SizedBox(
+                      height: 54,
+                      width: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          _display(_expression.isEmpty ? '0' : _expression),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 38,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    // Здесь показывается предпросмотр или сообщение об ошибке.
+                    SizedBox(
+                      height: 28,
+                      width: double.infinity,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          _message ?? (_preview == null ? '' : '= ${_display(_preview!)}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _message == null ? Colors.grey : Colors.red,
+                            fontSize: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            Expanded(
+              flex: 7,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return GridView.count(
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 1,
+                    crossAxisSpacing: 1,
+                    childAspectRatio:
+                    (constraints.maxWidth / 4) /
+                    (constraints.maxHeight / 6),
+                    children: _keys.map(_buildKey).toList(),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKey(String key) {
+    final isEquals = key == '=';
+    final isRed = _redKeys.contains(key);
+
+    final Color buttonColor;
+    if (isEquals) {
+      buttonColor = const Color(0xFFFF9800);
+    } else if (isRed) {
+      buttonColor = Colors.red;
+    } else {
+      buttonColor = Colors.black;
+    }
+
+    return Container(
+      color: const Color(0xFF555555),
+      padding: const EdgeInsets.all(0.5),
+      child: Material(
+        color: buttonColor,
+        child: InkWell(
+          onTap: () => _press(key),
+          child: Center(
+            child: Text(
+              key,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: key == '000' ? 22 : 28,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Рациональное число: сокращённый числитель и положительный знаменатель.
+class Rational {
+  Rational(BigInt numerator, BigInt denominator)
+  : numerator = _normalise(numerator, denominator).$1,
+  denominator = _normalise(numerator, denominator).$2;
+
+  final BigInt numerator;
+  final BigInt denominator;
+
+  static (BigInt, BigInt) _normalise(BigInt numerator, BigInt denominator) {
+    if (denominator == BigInt.zero) {
+      throw const FormatException('Деление на ноль');
+    }
+
+    var n = numerator;
+    var d = denominator;
+
+    if (d.isNegative) {
+      n = -n;
+      d = -d;
+    }
+
+    final divisor = _gcd(n.abs(), d);
+    return (n ~/ divisor, d ~/ divisor);
+  }
+
+  static BigInt _gcd(BigInt a, BigInt b) {
+    var x = a;
+    var y = b;
+
+    while (y != BigInt.zero) {
+      final remainder = x % y;
+      x = y;
+      y = remainder;
+    }
+
+    return x == BigInt.zero ? BigInt.one : x;
+  }
+
+  static BigInt _pow10(int exponent) {
+    return BigInt.from(10).pow(exponent);
+  }
+
+  static Rational fromDecimal(String text) {
+    final negative = text.startsWith('-');
+    final unsigned = negative ? text.substring(1) : text;
+    final dotIndex = unsigned.indexOf('.');
+
+    if (dotIndex == -1) {
+      final value = BigInt.parse(unsigned);
+      return Rational(negative ? -value : value, BigInt.one);
+    }
+
+    final whole = unsigned.substring(0, dotIndex);
+    final fraction = unsigned.substring(dotIndex + 1);
+    final digits = '${whole.isEmpty ? '0' : whole}$fraction';
+    final denominator = _pow10(fraction.length);
+    final numerator = BigInt.parse(digits.isEmpty ? '0' : digits);
+
+    return Rational(negative ? -numerator : numerator, denominator);
+  }
+
+  Rational operator +(Rational other) {
+    return Rational(
+      numerator * other.denominator + other.numerator * denominator,
+      denominator * other.denominator,
+    );
+  }
+
+  Rational operator -(Rational other) {
+    return Rational(
+      numerator * other.denominator - other.numerator * denominator,
+      denominator * other.denominator,
+    );
+  }
+
+  Rational operator *(Rational other) {
+    return Rational(
+      numerator * other.numerator,
+      denominator * other.denominator,
+    );
+  }
+
+  Rational operator /(Rational other) {
+    if (other.numerator == BigInt.zero) {
+      throw const FormatException('Деление на ноль');
+    }
+
+    return Rational(
+      numerator * other.denominator,
+      denominator * other.numerator,
+    );
+  }
+
+  Rational operator -() => Rational(-numerator, denominator);
+
+  Rational percent() => Rational(numerator, denominator * BigInt.from(100));
+
+  Rational powInteger(BigInt exponent) {
+    if (exponent == BigInt.zero) {
+      return Rational(BigInt.one, BigInt.one);
+    }
+
+    if (exponent.abs() > BigInt.from(10000)) {
+      throw const FormatException('Слишком большая степень');
+    }
+
+    final power = exponent.abs().toInt();
+    final poweredNumerator = numerator.abs().pow(power);
+    final signedNumerator =
+    numerator.isNegative && power.isOdd ? -poweredNumerator : poweredNumerator;
+    final poweredDenominator = denominator.pow(power);
+
+    if (exponent.isNegative) {
+      if (signedNumerator == BigInt.zero) {
+        throw const FormatException('Деление на ноль');
+      }
+      return Rational(poweredDenominator, signedNumerator);
+    }
+
+    return Rational(signedNumerator, poweredDenominator);
+  }
+
+  Rational sqrtApproximation() {
+    if (numerator.isNegative) {
+      throw const FormatException('Корень из отрицательного числа');
+    }
+
+    final scale = _pow10(12);
+    final scaledRadicand = numerator * scale * scale ~/ denominator;
+    final root = _integerSqrt(scaledRadicand);
+
+    return Rational(root, scale);
+  }
+
+  static BigInt _integerSqrt(BigInt value) {
+    if (value < BigInt.zero) {
+      throw const FormatException('Корень из отрицательного числа');
+    }
+    if (value < BigInt.two) return value;
+
+    var x = value;
+    var y = (x + BigInt.one) ~/ BigInt.two;
+
+    while (y < x) {
+      x = y;
+      y = (x + value ~/ x) ~/ BigInt.two;
+    }
+
+    return x;
+  }
+
+  double toDouble() {
+    return numerator.toDouble() / denominator.toDouble();
+  }
+
+  static Rational fromDoubleApproximation(double value) {
+    if (!value.isFinite) {
+      throw const FormatException('Некорректный результат');
+    }
+
+    const places = 12;
+    final scale = math.pow(10, places).toInt();
+    final scaled = (value * scale).round();
+
+    return Rational(BigInt.from(scaled), BigInt.from(scale));
+  }
+
+  String toDisplayString() {
+    if (numerator == BigInt.zero) return '0';
+
+    const places = 15;
+    final scale = _pow10(places);
+    final absoluteNumerator = numerator.abs();
+    final scaled = absoluteNumerator * scale;
+    var rounded = scaled ~/ denominator;
+    final remainder = scaled % denominator;
+
+    if (remainder * BigInt.two >= denominator) {
+      rounded += BigInt.one;
+    }
+
+    final whole = rounded ~/ scale;
+    final fraction = (rounded % scale).toString().padLeft(places, '0');
+    final trimmedFraction = fraction.replaceFirst(RegExp(r'0+$'), '');
+    final sign = numerator.isNegative ? '-' : '';
+
+    if (trimmedFraction.isEmpty) {
+      return '$sign$whole';
+    }
+
+    return '$sign$whole.$trimmedFraction';
+  }
+}
+
+/// Разбирает выражения с рациональной арифметикой, %, степенями и sqrt(...).
+class ExpressionParser {
+  ExpressionParser(this.input);
+
+  final String input;
+  int _position = 0;
+
+  Rational parse() {
+    final value = _parseAddSubtract();
+
+    if (_position != input.length) {
+      throw const FormatException('Лишние символы');
+    }
+
+    return value;
+  }
+
+  Rational _parseAddSubtract() {
+    var value = _parseMultiplyDivide();
+
+    while (_match('+') || _match('-')) {
+      final operator = input[_position++];
+      final right = _parseMultiplyDivide();
+
+      value = operator == '+' ? value + right : value - right;
+    }
+
+    return value;
+  }
+
+  Rational _parseMultiplyDivide() {
+    var value = _parseUnary();
+
+    while (_match('*') || _match('/')) {
+      final operator = input[_position++];
+      final right = _parseUnary();
+
+      value = operator == '*' ? value * right : value / right;
+    }
+
+    return value;
+  }
+
+  Rational _parseUnary() {
+    if (_match('+')) {
+      _position++;
+      return _parseUnary();
+    }
+
+    if (_match('-')) {
+      _position++;
+      return -_parseUnary();
+    }
+
+    return _parsePower();
+  }
+
+  Rational _parsePower() {
+    final base = _parsePostfix();
+
+    if (_match('^')) {
+      _position++;
+      final exponent = _parseUnary();
+
+      if (exponent.denominator == BigInt.one) {
+        return base.powInteger(exponent.numerator);
+      }
+
+      // Дробные степени в общем случае не являются рациональными.
+      final result = math.pow(base.toDouble(), exponent.toDouble()).toDouble();
+      return Rational.fromDoubleApproximation(result);
+    }
+
+    return base;
+  }
+
+  Rational _parsePostfix() {
+    var value = _parsePrimary();
+
+    while (_match('%')) {
+      _position++;
+      value = value.percent();
+    }
+
+    return value;
+  }
+
+  Rational _parsePrimary() {
+    if (input.startsWith('sqrt(', _position)) {
+      _position += 'sqrt('.length;
+      final value = _parseAddSubtract();
+      _expect(')');
+
+      return value.sqrtApproximation();
+    }
+
+    if (_match('@')) {
+      return _parseExactValue();
+    }
+
+    if (_match('(')) {
+      _position++;
+      final value = _parseAddSubtract();
+      _expect(')');
+      return value;
+    }
+
+    return _parseNumber();
+  }
+
+  Rational _parseExactValue() {
+    _position++; // @
+
+    final colon = input.indexOf(':', _position);
+    if (colon == -1) {
+      throw const FormatException('Некорректное точное число');
+    }
+
+    final semicolon = input.indexOf(';', colon + 1);
+    if (semicolon == -1) {
+      throw const FormatException('Некорректное точное число');
+    }
+
+    final numeratorText = input.substring(_position, colon);
+    final denominatorText = input.substring(colon + 1, semicolon);
+
+    _position = semicolon + 1;
+
+    return Rational(
+      BigInt.parse(numeratorText),
+      BigInt.parse(denominatorText),
+    );
+  }
+
+  Rational _parseNumber() {
+    final start = _position;
+    var hasDigit = false;
+
+    while (_position < input.length && _isDigit(input[_position])) {
+      hasDigit = true;
+      _position++;
+    }
+
+    if (_match('.')) {
+      _position++;
+
+      while (_position < input.length && _isDigit(input[_position])) {
+        hasDigit = true;
+        _position++;
+      }
+    }
+
+    if (!hasDigit) {
+      throw const FormatException('Ожидалось число');
+    }
+
+    return Rational.fromDecimal(input.substring(start, _position));
+  }
+
+  bool _match(String char) {
+    return _position < input.length && input[_position] == char;
+  }
+
+  void _expect(String char) {
+    if (!_match(char)) {
+      throw const FormatException('Не хватает закрывающей скобки');
+    }
+
+    _position++;
+  }
+
+  static bool _isDigit(String char) {
+    return RegExp(r'\d').hasMatch(char);
+  }
+}
