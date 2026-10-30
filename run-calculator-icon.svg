@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="iconTitle iconDesc">
-    <title id="iconTitle">Иконка бегового калькулятора</title>
-    <desc id="iconDesc">Упрощённый калькулятор на фоне и бегущий человек сбоку на переднем плане.</desc>
+    <title id="iconTitle">Ultra Run Calc</title>
+    <desc id="iconDesc">Ультра калькулятор для бега - Ultra Run Calc (uRunCalc).</desc>
 
     <defs>
         <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">

@@ -2369,10 +2369,33 @@ class _PaceViewState extends State<_PaceView> {
         '${minutes.toString().padLeft(2, '0')}';
   }
 
+  /// Определяет, находится ли текущая строка таблицы Ultra до или после ряда "План".
+  /// Индексы строк таблицы: 0=Start/ПП, 1=Лимит, 2=Расстояние, 3=Темп сегмента (зеленый), 
+  /// 4=Общее время, 5=Темп в лимит, 6=План, 7=Плановый темп (белый), 8=Итоговый плановый темп (белый), 9=Итоговое плановое время (белый)
+  bool _isBeforePlanRow(int rowIndex) => rowIndex <= 5;
+
   String _columnLabel(int index) {
     if (index == 0) return 'Start';
     if (index == _columns - 1) return 'Finish';
     return '$index';
+  }
+
+  /// Форматирует время в формате чч:мм, убирая ведущий ноль (например, "07:00" -> "7:00").
+  String _formatTimeWithoutLeadingZero(String timeBuffer) {
+    if (timeBuffer.isEmpty) return '';
+    final parts = timeBuffer.split(':');
+    if (parts.length < 2) return timeBuffer;
+    final hours = parts[0];
+    final minutes = parts[1];
+    // Убираем ведущий ноль у часов, если он есть
+    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0).substring(1));
+    return '$formattedHours:$minutes';
+  }
+
+  String _planTimeText(int column) {
+    final timeBuffer = _timeBufferText(_planTimes[column]);
+    // Для ряда Плановый темп убираем ведущие нули (например, "07:00" -> "7:00")
+    return _isBeforePlanRow(6) ? timeBuffer : _formatTimeWithoutLeadingZero(timeBuffer);
   }
 
   String _tableTimeText(int column) {
@@ -2419,6 +2442,25 @@ class _PaceViewState extends State<_PaceView> {
 
     final pace = _plannedPace(column);
     return pace == null ? '0:00' : _formatPaceSeconds(pace);
+  }
+
+  /// Определяет цвет текста для ячейки таблицы Ultra.
+  /// Цвета от начала до ряда "Темп в лимит" (индексы 0-5): светло-коричневый
+  /// План и ниже (индексы 6-9): белый
+  Color? _cellTextColor(int rowIndex, {bool isPlanRow = false}) {
+    if (rowIndex <= 5) {
+      return const Color(0xFFD2B48C); // Светло-коричневый (tan)
+    }
+    if (isPlanRow || rowIndex >= 6) {
+      return Colors.white;
+    }
+    return null;
+  }
+
+  /// Определяет цвет текста для ячейки в ряду Темп сегмента (зеленый по умолчанию).
+  Color? _segmentPaceTextColor(int column, int rowIndex) {
+    if (rowIndex != 3) return null; // Только для ряда Темп сегмента
+    return const Color(0xFF4CAF50); // Зеленый
   }
 
   int? _segmentPace(int index) {
@@ -4916,11 +4958,27 @@ class _PaceViewState extends State<_PaceView> {
     );
   }
 
+  /// Определяет цвет текста для строки таблицы Ultra.
+  /// Цвета: светло-коричневый (#D2B48C) - от начала до Плана, белый - План и ниже.
+  Color? _textColorForRow(int rowIndex) {
+    // Индексы строк: 0=Start/ПП, 1=Лимит, 2=Расстояние, 3=Темп сегмента, 4=Общее время, 5=Темп в лимит, 6=План, 7=Плановый темп, 8=Итоговый плановый темп, 9=Итоговое плановое время
+    // Цвета от начала до Плана (индексы 0-3): светло-коричневый
+    // План и ниже (индексы 6-9): белый
+    if (rowIndex <= 3) {
+      return const Color(0xFFD2B48C); // Светло-коричневый (tan)
+    }
+    if (rowIndex >= 6) {
+      return Colors.white;
+    }
+    return null;
+  }
+
   Widget _noteCell(int index, {required bool compact}) {
     final label = _columnLabel(index);
     final note = _notes[index];
     final dayBorder = _dayBorderColor(index, _limitDays);
     final bold = _boldColumns.contains(index);
+    final textColor = _textColorForRow(index);
 
     if (compact) {
       final editable = !_locked;
@@ -4946,8 +5004,8 @@ class _PaceViewState extends State<_PaceView> {
                   child: Text(
                     label,
                     maxLines: 1,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: textColor ?? Colors.white,
                       fontSize: 14,
                     ),
                   ),
@@ -4961,8 +5019,8 @@ class _PaceViewState extends State<_PaceView> {
                     child: Text(
                       note,
                       maxLines: 1,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: textColor ?? Colors.white,
                         fontSize: 14,
                       ),
                     ),
@@ -4998,8 +5056,8 @@ class _PaceViewState extends State<_PaceView> {
                 child: Text(
                   label,
                   maxLines: 1,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: textColor ?? Colors.white,
                     fontSize: 30,
                     height: 1,
                   ),
@@ -5011,8 +5069,9 @@ class _PaceViewState extends State<_PaceView> {
                 flex: 3,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Reduce note font size by one step
+                    // Reduce note font size by one step and decrease text color brightness
                     final fontSize = (_noteFontSize(note, constraints.maxWidth) - 1.0).clamp(8.0, 19.0);
+                    final adjustedTextColor = textColor?.withOpacity(0.9) ?? Colors.white;
                     return FittedBox(
                       fit: BoxFit.scaleDown,
                       child: SizedBox(
@@ -5022,7 +5081,7 @@ class _PaceViewState extends State<_PaceView> {
                           maxLines: 3,
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: adjustedTextColor,
                             fontSize: fontSize,
                             height: 1.05,
                           ),
@@ -5062,6 +5121,9 @@ class _PaceViewState extends State<_PaceView> {
           _focus.tableColumn == index;
       // Check if plan time exceeds this limit - show red flash on limit cell
       final planExceeds = _planExceedsLimit(index);
+      // Row 1 (index 0 in times row) has default tan color
+      final textColor = _cellTextColor(1);
+      
       return _interactiveCell(
         key: 'pace-table-time-$index',
         text: _tableTimeText(index),
@@ -5070,7 +5132,7 @@ class _PaceViewState extends State<_PaceView> {
         editable: true,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
-        color: planExceeds ? Colors.red : null,
+        color: planExceeds ? Colors.red : textColor,
         onTap: () => _focusTableTime(index),
       );
     });
@@ -5081,7 +5143,9 @@ class _PaceViewState extends State<_PaceView> {
       final focused =
           _focus.kind == _PaceFocusKind.tableDistance &&
           _focus.tableColumn == index;
-      final editable = index != 0;
+      // Row 2 (index 1 in distances row) has default tan color
+      final textColor = _cellTextColor(2);
+      
       return _interactiveCell(
         key: 'pace-table-distance-$index',
         text: editable ? _tableDistanceText(index) : 'КМ',
@@ -5090,6 +5154,7 @@ class _PaceViewState extends State<_PaceView> {
         editable: editable,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
+        color: textColor,
         onTap: editable ? () => _focusTableDistance(index) : null,
       );
     });
@@ -5099,6 +5164,9 @@ class _PaceViewState extends State<_PaceView> {
     final paces = List<int?>.generate(_columns, _segmentPace);
     return List.generate(_columns, (index) {
       final pace = paces[index];
+      // Row 3 has default green color for segment pace
+      final baseColor = _segmentPaceTextColor(3, index);
+      
       return _interactiveCell(
         key: 'pace-table-pace-$index',
         text: index == 0
@@ -5107,7 +5175,7 @@ class _PaceViewState extends State<_PaceView> {
             ? '—'
             : _formatPaceSeconds(pace),
         result: true,
-        color: _paceHighlight(index, paces) ?? const Color(0xFF4CAF50),
+        color: _paceHighlight(index, paces) ?? baseColor,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
         onTap: _hideKeyboard,
@@ -5120,7 +5188,10 @@ class _PaceViewState extends State<_PaceView> {
       final focused =
           _focus.kind == _PaceFocusKind.tablePlanTime &&
           _focus.tableColumn == index;
+      // Row 6 has white color for plan time
+      final textColor = _cellTextColor(6, isPlanRow: true);
       final exceedsLimit = _planExceedsLimit(index);
+      
       return _interactiveCell(
         key: 'pace-plan-time-$index',
         text: _planTimeText(index),
@@ -5129,7 +5200,7 @@ class _PaceViewState extends State<_PaceView> {
         editable: true,
         dayBorder: _dayBorderColor(index, _planDays),
         boldBorder: _boldColumns.contains(index),
-        color: exceedsLimit ? Colors.red : null,
+        color: exceedsLimit ? Colors.red : textColor,
         onTap: () => _focusPlanTime(index),
       );
     });
@@ -5152,14 +5223,17 @@ class _PaceViewState extends State<_PaceView> {
       final focused =
           _focus.kind == _PaceFocusKind.tablePlanPace &&
           _focus.tableColumn == index;
+      // Row 7 has white color for plan pace
+      final textColor = _cellTextColor(7, isPlanRow: true);
       final planned = paces[index];
+      
       return _interactiveCell(
         key: 'pace-plan-pace-$index',
         text: _planPaceText(index),
         placeholder: !focused && planned == null,
         focused: focused,
         editable: true,
-        color: _paceHighlight(index, paces),
+        color: _paceHighlight(index, paces) ?? textColor,
         dayBorder: _dayBorderColor(index, _planDays),
         boldBorder: _boldColumns.contains(index),
         onTap: () => _focusPlanPace(index),
