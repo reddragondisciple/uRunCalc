@@ -2409,14 +2409,8 @@ class _PaceViewState extends State<_PaceView> {
     final hours = parts[0];
     final minutes = parts[1];
     // Убираем ведущий ноль у часов, если он есть
-    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0)?.substring(1) ?? "");
+    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0)?.substring(1) ?? '');
     return '$formattedHours:$minutes';
-  }
-
-  String _planTimeText(int column) {
-    final timeBuffer = _timeBufferText(_planTimes[column]);
-    // Для ряда Плановый темп убираем ведущие нули (например, "07:00" -> "7:00")
-    return _isBeforePlanRow(6) ? timeBuffer : _formatTimeWithoutLeadingZero(timeBuffer);
   }
 
   String _tableTimeText(int column) {
@@ -2445,6 +2439,10 @@ class _PaceViewState extends State<_PaceView> {
     if (decimals <= 0) return value.toStringAsFixed(0);
     if (decimals == 1) return value.toStringAsFixed(1);
     return value.toStringAsFixed(2);
+  }
+
+  String _planTimeText(int column) {
+    return _timeBufferText(_planTimes[column]);
   }
 
   String _planPaceText(int column) {
@@ -5165,14 +5163,14 @@ class _PaceViewState extends State<_PaceView> {
       
       return _interactiveCell(
         key: 'pace-table-distance-$index',
-        text: editable ? _tableDistanceText(index) : 'КМ',
-        placeholder: editable && _tableDistances[index].isEmpty,
+        text: _tableDistanceText(index),
+        placeholder: _tableDistances[index].isEmpty,
         focused: focused,
-        editable: editable,
+        editable: true,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
         color: textColor,
-        onTap: editable ? () => _focusTableDistance(index) : null,
+        onTap: () => _focusTableDistance(index),
       );
     });
   }
