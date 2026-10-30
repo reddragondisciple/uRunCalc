@@ -2035,6 +2035,22 @@ class _PaceViewState extends State<_PaceView> {
     '165.2',
   ];
 
+  /// Данные для дистанции K40 в Mad Fox Ultra (время)
+  static const List<String> _madFoxK40Times = [
+    '1030',
+    '1330',
+    '1530',
+    '1830',
+  ];
+
+  /// Дистанции для K40 в Mad Fox Ultra (в км)
+  static const List<String> _madFoxK40Distances = [
+    '',
+    '14.8',
+    '24',
+    '40.7',
+  ];
+
   static List<_PaceEvent> _defaultEvents() => [
     _PaceEvent('GRUT', [
       _PaceDistance(
@@ -2055,7 +2071,12 @@ class _PaceViewState extends State<_PaceView> {
       ),
       _PaceDistance('50M', 5),
       _PaceDistance('K70', 4),
-      _PaceDistance('K40', 2),
+      _PaceDistance(
+        'K40',
+        2,
+        defaultTimes: _madFoxK40Times,
+        defaultDistances: _madFoxK40Distances,
+      ),
     ]),
   ];
 
@@ -2388,7 +2409,7 @@ class _PaceViewState extends State<_PaceView> {
     final hours = parts[0];
     final minutes = parts[1];
     // Убираем ведущий ноль у часов, если он есть
-    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0).substring(1));
+    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0)?.substring(1) ?? "");
     return '$formattedHours:$minutes';
   }
 
@@ -2424,10 +2445,6 @@ class _PaceViewState extends State<_PaceView> {
     if (decimals <= 0) return value.toStringAsFixed(0);
     if (decimals == 1) return value.toStringAsFixed(1);
     return value.toStringAsFixed(2);
-  }
-
-  String _planTimeText(int column) {
-    return _timeBufferText(_planTimes[column]);
   }
 
   String _planPaceText(int column) {
