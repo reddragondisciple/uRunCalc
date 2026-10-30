@@ -1490,6 +1490,7 @@ class _PaceViewState extends State<_PaceView> {
 
   bool _locked = false;
   bool _lockedLimits = false;
+  bool _lockedBasicRows = false; // Блокирует только ряды: ПП, лимиты, расстояние
   bool _keyboardVisible = false;
 
   String _plannedPaceOverride = '';
@@ -2464,7 +2465,7 @@ class _PaceViewState extends State<_PaceView> {
   /// План и ниже (индексы 6-9): белый
   Color? _cellTextColor(int rowIndex, {bool isPlanRow = false}) {
     if (rowIndex <= 5) {
-      return const Color(0xFFD2B48C); // Светло-коричневый (tan)
+      return const Color(0xFFD2B48C); // Светло-коричневый (tan) для всех строк 0-5
     }
     if (isPlanRow || rowIndex >= 6) {
       return Colors.white;
@@ -2475,7 +2476,7 @@ class _PaceViewState extends State<_PaceView> {
   /// Определяет цвет текста для ячейки в ряду Темп сегмента (зеленый по умолчанию).
   Color? _segmentPaceTextColor(int column, int rowIndex) {
     if (rowIndex != 3) return null; // Только для ряда Темп сегмента
-    return const Color(0xFF4CAF50); // Зеленый
+    return const Color(0xFF4CAF50); // Зеленый для ВСЕХ колонок
   }
 
   int? _segmentPace(int index) {
@@ -3868,10 +3869,20 @@ class _PaceViewState extends State<_PaceView> {
         return SimpleDialog(
           title: const Text('Фиксация'),
           children: [
+            if (!_lockedBasicRows)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'lock_basic_rows'),
+                child: const Text('Зафиксировать лимиты'),
+              )
+            else
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, 'unlock_basic_rows'),
+                child: const Text('Разблокировать лимиты'),
+              ),
             if (!_lockedLimits)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(dialogContext, 'lock_limits'),
-                child: const Text('Зафиксировать лимиты'),
+                child: const Text('Зафиксировать лимиты (только лимит)'),
               )
             else
               SimpleDialogOption(
@@ -3901,11 +3912,17 @@ class _PaceViewState extends State<_PaceView> {
     if (!mounted || result == null) return;
 
     switch (result) {
+      case 'lock_basic_rows':
+        await _confirmAndApplyLock(true, false, lockBasicRows: true);
+        break;
+      case 'unlock_basic_rows':
+        await _confirmAndApplyUnlock(true, false, unlockBasicRows: true);
+        break;
       case 'lock_limits':
-        await _confirmAndApplyLock(true, false);
+        await _confirmAndApplyLock(false, true);
         break;
       case 'unlock_limits':
-        await _confirmAndApplyUnlock(true, false);
+        await _confirmAndApplyUnlock(false, true);
         break;
       case 'lock_all':
         await _confirmAndApplyLock(true, true);
@@ -3919,7 +3936,7 @@ class _PaceViewState extends State<_PaceView> {
     }
   }
 
-  Future<void> _confirmAndApplyLock(bool lockLimits, bool lockAll) async {
+  Future<void> _confirmAndApplyLock(bool lockAll, bool lockLimitsOnly, {bool lockBasicRows = false}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -3948,16 +3965,26 @@ class _PaceViewState extends State<_PaceView> {
     setState(() {
       if (lockAll) {
         _locked = true;
-      } else {
         _lockedLimits = true;
+        _lockedBasicRows = true;
+      } else if (lockBasicRows) {
+        _lockedBasicRows = true;
+        _lockedLimits = true;
+      } else if (lockLimitsOnly) {
+        _lockedLimits = true;
+        _lockedBasicRows = true;
+      } else {
+        // По умолчанию блокируем все
         _locked = true;
+        _lockedLimits = true;
+        _lockedBasicRows = true;
       }
       _keyboardVisible = false;
       _focus = const _PaceFocus.none();
     });
   }
 
-  Future<void> _confirmAndApplyUnlock(bool unlockLimits, bool unlockAll) async {
+  Future<void> _confirmAndApplyUnlock(bool unlockAll, bool unlockLimitsOnly, {bool unlockBasicRows = false}) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -3983,9 +4010,18 @@ class _PaceViewState extends State<_PaceView> {
       if (unlockAll) {
         _locked = false;
         _lockedLimits = false;
-      } else {
+        _lockedBasicRows = false;
+      } else if (unlockBasicRows) {
+        _lockedBasicRows = false;
         _lockedLimits = false;
+      } else if (unlockLimitsOnly) {
+        _lockedLimits = false;
+        _lockedBasicRows = false;
+      } else {
+        // По умолчанию снимаем все блокировки
         _locked = false;
+        _lockedLimits = false;
+        _lockedBasicRows = false;
       }
       _keyboardVisible = false;
       _focus = const _PaceFocus.none();
@@ -4996,7 +5032,8 @@ class _PaceViewState extends State<_PaceView> {
     final textColor = _textColorForRow(index);
 
     if (compact) {
-      final editable = !_locked;
+      final isBasicRow = index <= 2; // PP, лимиты, расстояние
+      final editable = !_locked && !(_lockedBasicRows && isBasicRow);
       final borderColor =
           dayBorder ?? (editable ? Colors.grey.shade700 : Colors.grey.shade900);
 
@@ -5048,7 +5085,8 @@ class _PaceViewState extends State<_PaceView> {
       );
     }
 
-    final editable = !_locked;
+    final isBasicRow = index <= 2; // PP, лимиты, расстояние
+    final editable = !_locked && !(_lockedBasicRows && isBasicRow);
     final borderColor =
         dayBorder ?? (editable ? Colors.grey.shade700 : Colors.grey.shade900);
     return InkWell(
