@@ -1,7 +1,7 @@
-name: calculator_app
-description: A dark calculator with exact rational arithmetic and fraction display.
+name: ultra_run_calc
+description: Ultra Run Calc - running pace calculator for trail ultras.
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+200
 
 environment:
   sdk: ^3.9.0
