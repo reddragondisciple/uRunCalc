@@ -4649,27 +4649,6 @@ class _PaceViewState extends State<_PaceView> {
               cells: _planPaceCells(),
               height: heights[6],
               expanded: _fitTable,
-              total: _totalValueCell(
-                key: 'pace-plan-pace-total',
-                text: _formatPaceSeconds(_overallPlannedPaceSeconds),
-                result: true,
-                bold: true,
-                fontSize: 16,
-              ),
-            ),
-          );
-          rows.add(
-            _tableRow(
-              cells: _planTimeCells(),
-              height: heights[5],
-              expanded: _fitTable,
-              total: _totalValueCell(
-                key: 'pace-plan-time-total',
-                text: _formatElapsedMinutes(_overallPlannedFinishMinutes),
-                result: true,
-                bold: true,
-                fontSize: 16,
-              ),
             ),
           );
           rows.add(
@@ -5501,9 +5480,9 @@ class _PaceViewState extends State<_PaceView> {
         ? Colors.grey.shade700
         : Colors.grey.shade900;
     final borderColor = focused
-        ? (boldBorder ? const Color(0xFFFF4444) : const Color(0xFF4CAF50))
+        ? const Color(0xFF4CAF50)
         : dayBorder ?? (boldBorder ? const Color(0xFFFF9800) : defaultBorder);
-    final borderWidth = focused ? 2.5 : (boldBorder ? 3.5 : 1.0);
+    final borderWidth = focused ? 1.5 : (boldBorder ? 3.0 : 1.0);
 
     final cell = InkWell(
       key: ValueKey(key),
