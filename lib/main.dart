@@ -5122,9 +5122,9 @@ class _PaceViewState extends State<_PaceView> {
                 flex: 3,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    // Reduce note font size by one step and decrease text color brightness
+                    // Reduce note font size by one step and decrease text color brightness using .withValues() instead of deprecated .withOpacity()
                     final fontSize = (_noteFontSize(note, constraints.maxWidth) - 1.0).clamp(8.0, 19.0);
-                    final adjustedTextColor = textColor?.withOpacity(0.9) ?? Colors.white;
+                    final adjustedTextColor = textColor?.withValues(red: 255, green: 229, blue: 214) ?? Colors.white;
                     return FittedBox(
                       fit: BoxFit.scaleDown,
                       child: SizedBox(
