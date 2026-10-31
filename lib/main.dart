@@ -5228,7 +5228,7 @@ class _PaceViewState extends State<_PaceView> {
             ? '—'
             : _formatPaceSeconds(pace),
         result: true,
-        color: _paceHighlight(index, paces) ?? baseColor,
+        color: baseColor, // Всегда зелёный для ряда Темп сегмента
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
         onTap: _hideKeyboard,
