@@ -1490,7 +1490,8 @@ class _PaceViewState extends State<_PaceView> {
 
   bool _locked = false;
   bool _lockedLimits = false;
-  bool _lockedBasicRows = false; // Блокирует только ряды: ПП, лимиты, расстояние
+  bool _lockedBasicRows =
+      false; // Блокирует только ряды: ПП, лимиты, расстояние
   bool _keyboardVisible = false;
 
   String _plannedPaceOverride = '';
@@ -2037,20 +2038,10 @@ class _PaceViewState extends State<_PaceView> {
   ];
 
   /// Данные для дистанции K40 в Mad Fox Ultra (время)
-  static const List<String> _madFoxK40Times = [
-    '1030',
-    '1330',
-    '1530',
-    '1830',
-  ];
+  static const List<String> _madFoxK40Times = ['1030', '1330', '1530', '1830'];
 
   /// Дистанции для K40 в Mad Fox Ultra (в км)
-  static const List<String> _madFoxK40Distances = [
-    '',
-    '14.8',
-    '24',
-    '40.7',
-  ];
+  static const List<String> _madFoxK40Distances = ['', '14.8', '24', '40.7'];
 
   static List<_PaceEvent> _defaultEvents() => [
     _PaceEvent('GRUT', [
@@ -2391,27 +2382,10 @@ class _PaceViewState extends State<_PaceView> {
         '${minutes.toString().padLeft(2, '0')}';
   }
 
-  /// Определяет, находится ли текущая строка таблицы Ultra до или после ряда "План".
-  /// Индексы строк таблицы: 0=Start/ПП, 1=Лимит, 2=Расстояние, 3=Темп сегмента (зеленый), 
-  /// 4=Общее время, 5=Темп в лимит, 6=План, 7=Плановый темп (белый), 8=Итоговый плановый темп (белый), 9=Итоговое плановое время (белый)
-  bool _isBeforePlanRow(int rowIndex) => rowIndex <= 5;
-
   String _columnLabel(int index) {
     if (index == 0) return 'Start';
     if (index == _columns - 1) return 'Finish';
     return '$index';
-  }
-
-  /// Форматирует время в формате чч:мм, убирая ведущий ноль (например, "07:00" -> "7:00").
-  String _formatTimeWithoutLeadingZero(String timeBuffer) {
-    if (timeBuffer.isEmpty) return '';
-    final parts = timeBuffer.split(':');
-    if (parts.length < 2) return timeBuffer;
-    final hours = parts[0];
-    final minutes = parts[1];
-    // Убираем ведущий ноль у часов, если он есть
-    final formattedHours = hours.replaceAllMapped(RegExp(r'^0+'), (match) => match.group(0)?.substring(1) ?? '');
-    return '$formattedHours:$minutes';
   }
 
   String _tableTimeText(int column) {
@@ -2465,7 +2439,9 @@ class _PaceViewState extends State<_PaceView> {
   /// План и ниже (индексы 6-9): белый
   Color? _cellTextColor(int rowIndex, {bool isPlanRow = false}) {
     if (rowIndex <= 5) {
-      return const Color(0xFFD2B48C); // Светло-коричневый (tan) для всех строк 0-5
+      return const Color(
+        0xFFD2B48C,
+      ); // Светло-коричневый (tan) для всех строк 0-5
     }
     if (isPlanRow || rowIndex >= 6) {
       return Colors.white;
@@ -2474,7 +2450,7 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   /// Определяет цвет текста для ячейки в ряду Темп сегмента (зеленый по умолчанию).
-  Color? _segmentPaceTextColor(int column, int rowIndex) {
+  Color? _segmentPaceTextColor(int rowIndex) {
     if (rowIndex != 3) return null; // Только для ряда Темп сегмента
     return const Color(0xFF4CAF50); // Зеленый для ВСЕХ колонок
   }
@@ -2623,7 +2599,7 @@ class _PaceViewState extends State<_PaceView> {
     for (var i = 1; i <= column; i++) {
       final p = _parseTimeBuffer(_planTimes[i]);
       final l = _parseTimeBuffer(_tableTimes[i]);
-      
+
       if (p != null && prevPlanTime != null) {
         var delta = p - prevPlanTime;
         if (delta < 0) delta += 24 * 60;
@@ -2634,7 +2610,7 @@ class _PaceViewState extends State<_PaceView> {
         if (delta < 0) delta += 24 * 60;
         limitElapsed += delta;
       }
-      
+
       prevPlanTime = p;
       prevLimitTime = l;
     }
@@ -3061,45 +3037,6 @@ class _PaceViewState extends State<_PaceView> {
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
     );
-  }
-
-  Future<void> _toggleLock() async {
-    _hideKeyboard();
-    final unlocking = _locked;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(
-            unlocking ? 'Снять фиксацию?' : 'Зафиксировать введённые значения?',
-          ),
-          content: Text(
-            unlocking
-                ? 'Поля снова станут доступны для изменений.'
-                : 'Все поля ввода станут недоступны для изменений. '
-                      'Разблокировать таблицу можно этой же кнопкой.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(unlocking ? 'Снять' : 'Зафиксировать'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || confirmed != true) return;
-    setState(() {
-      _locked = !unlocking;
-      _keyboardVisible = false;
-      _focus = const _PaceFocus.none();
-    });
   }
 
   String _appendTimeBuffer(String current, String char) {
@@ -3871,12 +3808,14 @@ class _PaceViewState extends State<_PaceView> {
           children: [
             if (!_lockedBasicRows)
               SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, 'lock_basic_rows'),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, 'lock_basic_rows'),
                 child: const Text('Зафиксировать лимиты'),
               )
             else
               SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, 'unlock_basic_rows'),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, 'unlock_basic_rows'),
                 child: const Text('Разблокировать лимиты'),
               ),
             if (!_lockedLimits)
@@ -3936,7 +3875,11 @@ class _PaceViewState extends State<_PaceView> {
     }
   }
 
-  Future<void> _confirmAndApplyLock(bool lockAll, bool lockLimitsOnly, {bool lockBasicRows = false}) async {
+  Future<void> _confirmAndApplyLock(
+    bool lockAll,
+    bool lockLimitsOnly, {
+    bool lockBasicRows = false,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -3984,7 +3927,11 @@ class _PaceViewState extends State<_PaceView> {
     });
   }
 
-  Future<void> _confirmAndApplyUnlock(bool unlockAll, bool unlockLimitsOnly, {bool unlockBasicRows = false}) async {
+  Future<void> _confirmAndApplyUnlock(
+    bool unlockAll,
+    bool unlockLimitsOnly, {
+    bool unlockBasicRows = false,
+  }) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -5123,8 +5070,18 @@ class _PaceViewState extends State<_PaceView> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     // Reduce note font size by one step and decrease text color brightness using .withValues() instead of deprecated .withOpacity()
-                    final fontSize = (_noteFontSize(note, constraints.maxWidth) - 1.0).clamp(8.0, 19.0);
-                    final adjustedTextColor = textColor?.withValues(red: 255, green: 229, blue: 214) ?? Colors.white;
+                    final fontSize =
+                        (_noteFontSize(note, constraints.maxWidth) - 1.0).clamp(
+                          8.0,
+                          19.0,
+                        );
+                    final adjustedTextColor =
+                        textColor?.withValues(
+                          red: 255,
+                          green: 229,
+                          blue: 214,
+                        ) ??
+                        Colors.white;
                     return FittedBox(
                       fit: BoxFit.scaleDown,
                       child: SizedBox(
@@ -5176,7 +5133,7 @@ class _PaceViewState extends State<_PaceView> {
       final planExceeds = _planExceedsLimit(index);
       // Row 1 (index 0 in times row) has default tan color
       final textColor = _cellTextColor(1);
-      
+
       return _interactiveCell(
         key: 'pace-table-time-$index',
         text: _tableTimeText(index),
@@ -5198,7 +5155,7 @@ class _PaceViewState extends State<_PaceView> {
           _focus.tableColumn == index;
       // Row 2 (index 1 in distances row) has default tan color
       final textColor = _cellTextColor(2);
-      
+
       return _interactiveCell(
         key: 'pace-table-distance-$index',
         text: _tableDistanceText(index),
@@ -5218,8 +5175,8 @@ class _PaceViewState extends State<_PaceView> {
     return List.generate(_columns, (index) {
       final pace = paces[index];
       // Row 3 has default green color for segment pace
-      final baseColor = _segmentPaceTextColor(3, index);
-      
+      final baseColor = _segmentPaceTextColor(3);
+
       return _interactiveCell(
         key: 'pace-table-pace-$index',
         text: index == 0
@@ -5244,7 +5201,7 @@ class _PaceViewState extends State<_PaceView> {
       // Row 6 has white color for plan time
       final textColor = _cellTextColor(6, isPlanRow: true);
       final exceedsLimit = _planExceedsLimit(index);
-      
+
       return _interactiveCell(
         key: 'pace-plan-time-$index',
         text: _planTimeText(index),
@@ -5279,7 +5236,7 @@ class _PaceViewState extends State<_PaceView> {
       // Row 7 has white color for plan pace
       final textColor = _cellTextColor(7, isPlanRow: true);
       final planned = paces[index];
-      
+
       return _interactiveCell(
         key: 'pace-plan-pace-$index',
         text: _planPaceText(index),

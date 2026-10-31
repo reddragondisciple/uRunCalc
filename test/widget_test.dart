@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:calculator_app/main.dart';
+import 'package:ultra_run_calc/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -68,7 +68,8 @@ Future<void> enterPaceTime(
   String digits,
 ) async {
   await tapField(tester, find.byKey(ValueKey(key)));
-  for (final char in digits.split('')) {
+  // Время вводится только цифрами: двоеточие подставляется автоматически.
+  for (final char in digits.replaceAll(':', '').split('')) {
     await tapPaceKey(tester, char);
   }
 }
@@ -467,12 +468,12 @@ void main() {
     await switchMode(tester, 'Ultra');
 
     await tapField(tester, find.byKey(const ValueKey('pace-table-time-0')));
-    for (final key in ['0', '8', ':', '0', '0']) {
+    for (final key in ['0', '8', '0', '0']) {
       await tapPaceKey(tester, key);
     }
 
     await tapField(tester, find.byKey(const ValueKey('pace-table-time-1')));
-    for (final key in ['0', '8', ':', '3', '0']) {
+    for (final key in ['0', '8', '3', '0']) {
       await tapPaceKey(tester, key);
     }
 
@@ -800,7 +801,6 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('pace-key-.')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pace-key-:')), findsOneWidget);
     expect(find.byKey(const ValueKey('pace-key-⌫')), findsOneWidget);
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('pace-key-.'))).dy,
@@ -998,7 +998,7 @@ void main() {
     );
   });
 
-  testWidgets('pace highlights the fastest segment and planned paces', (
+  testWidgets('pace keeps segment pace green and highlights planned paces', (
     tester,
   ) async {
     usePhoneSize(tester);
@@ -1013,12 +1013,11 @@ void main() {
     await enterPaceValue(tester, 'pace-table-distance-2', '2');
     await enterPaceValue(tester, 'pace-table-distance-3', '3');
 
-    expect(paceCellColor(tester, 'pace-table-pace-2', '20:00'), Colors.red);
-    expect(paceCellColor(tester, 'pace-table-pace-3', '25:00'), Colors.amber);
-    expect(
-      paceCellColor(tester, 'pace-table-pace-1', '30:00'),
-      const Color(0xFFFFB74D),
-    );
+    // Ряд «Темп сегмента» всегда зелёный, без подсветки быстрейшего.
+    const segmentColor = Color(0xFF4CAF50);
+    expect(paceCellColor(tester, 'pace-table-pace-2', '20:00'), segmentColor);
+    expect(paceCellColor(tester, 'pace-table-pace-3', '25:00'), segmentColor);
+    expect(paceCellColor(tester, 'pace-table-pace-1', '30:00'), segmentColor);
 
     await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
     await enterPaceTime(tester, 'pace-plan-time-1', '08:30');
@@ -1464,6 +1463,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('pace-lock-button')));
     await tester.pumpAndSettle();
+    expect(find.text('Фиксация'), findsOneWidget);
+    await tester.tap(find.text('Зафиксировать все'));
+    await tester.pumpAndSettle();
     expect(find.text('Зафиксировать введённые значения?'), findsOneWidget);
     await tester.tap(find.text('Зафиксировать'));
     await tester.pumpAndSettle();
@@ -1499,6 +1501,9 @@ void main() {
     expect(find.byKey(const ValueKey('pace-key-1')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('pace-lock-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('Фиксация'), findsOneWidget);
+    await tester.tap(find.text('Разблокировать все'));
     await tester.pumpAndSettle();
     expect(find.text('Снять фиксацию?'), findsOneWidget);
     await tester.tap(find.text('Снять'));
@@ -1615,7 +1620,7 @@ void main() {
       );
     }
     const grutDistances = [
-      'КМ',
+      '0.00',
       '11',
       '18.8',
       '30',
@@ -1660,7 +1665,7 @@ void main() {
       );
     }
     const vrDistances = [
-      'КМ',
+      '0.00',
       '20.3',
       '32.2',
       '47.3',
@@ -1778,14 +1783,14 @@ void main() {
     expect(
       tester.getCenter(find.byKey(const ValueKey('pace-total-plan-pace'))).dy,
       closeTo(
-        tester.getCenter(find.byKey(const ValueKey('pace-plan-time-0'))).dy,
+        tester.getCenter(find.byKey(const ValueKey('pace-plan-pace-1'))).dy,
         1,
       ),
     );
     expect(
       tester.getCenter(find.byKey(const ValueKey('pace-total-plan-time'))).dy,
       closeTo(
-        tester.getCenter(find.byKey(const ValueKey('pace-plan-pace-1'))).dy,
+        tester.getCenter(find.byKey(const ValueKey('pace-plan-time-0'))).dy,
         1,
       ),
     );
@@ -1990,7 +1995,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-table-distance-0')),
-        matching: find.text('КМ'),
+        matching: find.text('0.00'),
       ),
       findsOneWidget,
     );
@@ -2165,8 +2170,13 @@ void main() {
     await tester.longPress(find.byKey(const ValueKey('pace-note-0')));
     await tester.pumpAndSettle();
 
+    // Ячейки заметок/воды/еды рисуют рамку 2.5, ячейки таблицы — 3.0.
+    const thinBoldKeys = {'pace-note-0', 'pace-water-0', 'pace-food-0'};
     for (final key in columnKeys) {
-      expect(paceCellBorderWidth(tester, key), 2.5);
+      expect(
+        paceCellBorderWidth(tester, key),
+        thinBoldKeys.contains(key) ? 2.5 : 3.0,
+      );
     }
     // Соседняя колонка остаётся обычной.
     expect(paceCellBorderWidth(tester, 'pace-table-time-1'), 1);
@@ -2194,7 +2204,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(paceCellBorderWidth(tester, 'pace-note-0'), 2.5);
-    expect(paceCellBorderWidth(tester, 'pace-table-time-0'), 2.5);
+    expect(paceCellBorderWidth(tester, 'pace-table-time-0'), 3.0);
     expect(paceCellBorderWidth(tester, 'pace-water-0'), 2.5);
     expect(paceCellBorderWidth(tester, 'pace-food-0'), 2.5);
   });
