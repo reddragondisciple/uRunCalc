@@ -44,7 +44,8 @@ enum _CalculatorMode {
   engineering('Engineering'),
   pace('Pace'),
   ultra('Ultra'),
-  time('Time');
+  time('Time'),
+  info('Info');
 
   const _CalculatorMode(this.label);
 
@@ -815,7 +816,8 @@ class _CalculatorPageState extends State<CalculatorPage>
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (_mode == _CalculatorMode.pace ||
         _mode == _CalculatorMode.ultra ||
-        _mode == _CalculatorMode.time) {
+        _mode == _CalculatorMode.time ||
+        _mode == _CalculatorMode.info) {
       return KeyEventResult.ignored;
     }
 
@@ -899,6 +901,7 @@ class _CalculatorPageState extends State<CalculatorPage>
                       surface: _PaceSurface.ultra,
                     ),
                     const _TimeView(),
+                    const _InfoView(),
                   ],
                 ),
               ),
@@ -1504,6 +1507,12 @@ class _PaceViewState extends State<_PaceView> {
   /// Колонки, у которых долгим нажатием включены жирные границы.
   final Set<int> _boldColumns = {};
 
+  /// Снимок плановых времён до начала редактирования ряда «План» или
+  /// «Плановый темп». Нужен, чтобы после завершения ввода сдвинуть все
+  /// последующие плановые времена на ту же разницу.
+  List<String>? _planTimesBeforeEdit;
+  int? _planEditColumn;
+
   final Map<String, _UltraTableData> _tables = {};
   final GlobalKey _focusAnchorKey = GlobalKey();
 
@@ -1545,10 +1554,12 @@ class _PaceViewState extends State<_PaceView> {
     } else if (!widget.active && oldWidget.active) {
       _cursorTimer?.cancel();
       if (_isUltra) {
+        final planChanged = _finalizePlanEdit();
         _limitDays = _computeDays(_tableTimes);
         _planDays = _computeDays(_planTimes);
         _keyboardVisible = false;
         _focus = const _PaceFocus.none();
+        if (planChanged) _persist();
       }
     }
   }
@@ -2435,24 +2446,17 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   /// Определяет цвет текста для ячейки таблицы Ultra.
-  /// Цвета от начала до ряда "Темп в лимит" (индексы 0-5): светло-коричневый
-  /// План и ниже (индексы 6-9): белый
+  /// Ряды ПП, Лимит и Расстояние (индексы 0-2) используют тот же цвет, что и
+  /// итоговые подписи «Общее время» / «Темп в лимит».
+  /// План и ниже (индексы 6-9): белый.
   Color? _cellTextColor(int rowIndex, {bool isPlanRow = false}) {
-    if (rowIndex <= 5) {
-      return const Color(
-        0xFFD2B48C,
-      ); // Светло-коричневый (tan) для всех строк 0-5
+    if (rowIndex <= 2) {
+      return const Color(0xFFFFB74D);
     }
     if (isPlanRow || rowIndex >= 6) {
       return Colors.white;
     }
     return null;
-  }
-
-  /// Определяет цвет текста для ячейки в ряду Темп сегмента (зеленый по умолчанию).
-  Color? _segmentPaceTextColor(int rowIndex) {
-    if (rowIndex != 3) return null; // Только для ряда Темп сегмента
-    return const Color(0xFF4CAF50); // Зеленый для ВСЕХ колонок
   }
 
   int? _segmentPace(int index) {
@@ -2754,13 +2758,66 @@ class _PaceViewState extends State<_PaceView> {
 
   void _beginTableFocus(_PaceFocus focus) {
     if (_locked) return;
+    _finalizePlanEdit();
     _commitDays();
     setState(() {
+      _trackPlanEdit(focus);
       _focus = focus;
       _cursorVisible = true;
       _keyboardVisible = true;
     });
     _ensureFocusVisible();
+  }
+
+  void _trackPlanEdit(_PaceFocus focus) {
+    final isPlanEdit =
+        focus.kind == _PaceFocusKind.tablePlanTime ||
+        focus.kind == _PaceFocusKind.tablePlanPace;
+    if (!isPlanEdit) {
+      _planTimesBeforeEdit = null;
+      _planEditColumn = null;
+      return;
+    }
+    _planEditColumn = focus.tableColumn;
+    _planTimesBeforeEdit = List<String>.of(_planTimes);
+  }
+
+  /// Сдвигает плановые времена после отредактированной колонки на ту же
+  /// разницу, чтобы сохранить темпы всех последующих сегментов. Обновляет
+  /// до последнего сегмента, у которого задан плановый темп.
+  /// Возвращает true, если таблица изменилась.
+  bool _finalizePlanEdit() {
+    final before = _planTimesBeforeEdit;
+    final column = _planEditColumn;
+    _planTimesBeforeEdit = null;
+    _planEditColumn = null;
+    if (before == null || column == null) return false;
+    if (column <= 0 || column >= _planTimes.length) return false;
+
+    final oldMinutes = _parseTimeBuffer(before[column]);
+    final newMinutes = _parseTimeBuffer(_planTimes[column]);
+    if (oldMinutes == null || newMinutes == null) return false;
+
+    var delta = newMinutes - oldMinutes;
+    if (delta > 12 * 60) delta -= 24 * 60;
+    if (delta < -12 * 60) delta += 24 * 60;
+    if (delta == 0) return false;
+
+    var lastPaced = -1;
+    for (var index = column + 1; index < _columns; index++) {
+      final hasPace =
+          _planPaces[index].isNotEmpty || _plannedPace(index) != null;
+      if (hasPace) lastPaced = index;
+    }
+    if (lastPaced < 0) return false;
+
+    for (var index = column + 1; index <= lastPaced; index++) {
+      final time = _parseTimeBuffer(_planTimes[index]);
+      if (time == null) continue;
+      _planTimes[index] = _timeBufferFromMinutes(time + delta);
+    }
+    _planDays = _computeDays(_planTimes);
+    return true;
   }
 
   void _focusTableTime(int column) {
@@ -2953,8 +3010,13 @@ class _PaceViewState extends State<_PaceView> {
 
   /// Завершает ввод: пересчитывает дни и убирает клавиатуру.
   void _finishInput() {
+    final planChanged = _finalizePlanEdit();
     _commitDays();
-    if (!_keyboardVisible && _focus.kind == _PaceFocusKind.none) return;
+    if (!planChanged &&
+        !_keyboardVisible &&
+        _focus.kind == _PaceFocusKind.none) {
+      return;
+    }
     setState(() {
       _keyboardVisible = false;
       _focus = const _PaceFocus.none();
@@ -4956,19 +5018,10 @@ class _PaceViewState extends State<_PaceView> {
     );
   }
 
-  /// Определяет цвет текста для строки таблицы Ultra.
-  /// Цвета: светло-коричневый (#D2B48C) - от начала до Плана, белый - План и ниже.
-  Color? _textColorForRow(int rowIndex) {
-    // Индексы строк: 0=Start/ПП, 1=Лимит, 2=Расстояние, 3=Темп сегмента, 4=Общее время, 5=Темп в лимит, 6=План, 7=Плановый темп, 8=Итоговый плановый темп, 9=Итоговое плановое время
-    // Цвета от начала до Плана (индексы 0-3): светло-коричневый
-    // План и ниже (индексы 6-9): белый
-    if (rowIndex <= 3) {
-      return const Color(0xFFD2B48C); // Светло-коричневый (tan)
-    }
-    if (rowIndex >= 6) {
-      return Colors.white;
-    }
-    return null;
+  /// Цвет текста в ряду ПП (заголовки колонок и заметки). Такой же, как у
+  /// итоговых подписей «Общее время» / «Темп в лимит».
+  Color? _textColorForRow() {
+    return const Color(0xFFFFB74D);
   }
 
   Widget _noteCell(int index, {required bool compact}) {
@@ -4976,7 +5029,7 @@ class _PaceViewState extends State<_PaceView> {
     final note = _notes[index];
     final dayBorder = _dayBorderColor(index, _limitDays);
     final bold = _boldColumns.contains(index);
-    final textColor = _textColorForRow(index);
+    final textColor = _textColorForRow();
 
     if (compact) {
       final isBasicRow = index <= 2; // PP, лимиты, расстояние
@@ -5174,8 +5227,9 @@ class _PaceViewState extends State<_PaceView> {
     final paces = List<int?>.generate(_columns, _segmentPace);
     return List.generate(_columns, (index) {
       final pace = paces[index];
-      // Row 3 has default green color for segment pace
-      final baseColor = _segmentPaceTextColor(3);
+      const baseColor = Color(0xFF4CAF50);
+      // Самая быстрая дистанция — красным, вторая — жёлтым, остальные зелёные.
+      final color = _paceHighlight(index, paces) ?? baseColor;
 
       return _interactiveCell(
         key: 'pace-table-pace-$index',
@@ -5185,7 +5239,7 @@ class _PaceViewState extends State<_PaceView> {
             ? '—'
             : _formatPaceSeconds(pace),
         result: true,
-        color: baseColor, // Всегда зелёный для ряда Темп сегмента
+        color: color,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
         onTap: _hideKeyboard,
@@ -6441,6 +6495,85 @@ String _historyText(String expression, Rational value, bool approximate) {
   }
 
   return '$left $symbol $decimal';
+}
+
+/// Экран с информацией о проекте и ссылкой на автора.
+class _InfoView extends StatelessWidget {
+  const _InfoView();
+
+  static const String _url = 'https://github.com/reddragondisciple';
+
+  Future<void> _copyLink(BuildContext context) async {
+    await Clipboard.setData(const ClipboardData(text: _url));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.info_outline_rounded,
+              size: 48,
+              color: Color(0xFFFFB74D),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Ultra Run Calc',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Калькулятор темпа для трейловых ультрамарафонов',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 28),
+            const Text(
+              'Автор проекта',
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              key: const ValueKey('info-github-link'),
+              onTap: () => _copyLink(context),
+              borderRadius: BorderRadius.circular(6),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Text(
+                  _url,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF64B5F6),
+                    fontSize: 15,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Color(0xFF64B5F6),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Нажмите на ссылку, чтобы скопировать её',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Рисует выражение как набор inline-виджетов с настоящими вертикальными дробями.

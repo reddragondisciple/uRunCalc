@@ -971,6 +971,9 @@ void main() {
 
     await switchMode(tester, 'Time');
     expect(find.byKey(const ValueKey('time-tab-difference')), findsOneWidget);
+
+    await switchMode(tester, 'Info');
+    expect(find.byKey(const ValueKey('info-github-link')), findsOneWidget);
   });
 
   testWidgets('pace treats a smaller time as the next day', (tester) async {
@@ -998,7 +1001,7 @@ void main() {
     );
   });
 
-  testWidgets('pace keeps segment pace green and highlights planned paces', (
+  testWidgets('pace highlights fastest segments and planned paces', (
     tester,
   ) async {
     usePhoneSize(tester);
@@ -1013,10 +1016,10 @@ void main() {
     await enterPaceValue(tester, 'pace-table-distance-2', '2');
     await enterPaceValue(tester, 'pace-table-distance-3', '3');
 
-    // Ряд «Темп сегмента» всегда зелёный, без подсветки быстрейшего.
+    // Самый быстрый сегмент — красный, второй — жёлтый, остальные зелёные.
     const segmentColor = Color(0xFF4CAF50);
-    expect(paceCellColor(tester, 'pace-table-pace-2', '20:00'), segmentColor);
-    expect(paceCellColor(tester, 'pace-table-pace-3', '25:00'), segmentColor);
+    expect(paceCellColor(tester, 'pace-table-pace-2', '20:00'), Colors.red);
+    expect(paceCellColor(tester, 'pace-table-pace-3', '25:00'), Colors.amber);
     expect(paceCellColor(tester, 'pace-table-pace-1', '30:00'), segmentColor);
 
     await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
@@ -2310,6 +2313,139 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('editing plan time shifts all following plan times', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+    await enterPaceValue(tester, 'pace-table-distance-2', '20');
+    await enterPaceValue(tester, 'pace-table-distance-3', '30');
+    await enterPaceTime(tester, 'pace-plan-time-1', '09:00');
+    await enterPaceTime(tester, 'pace-plan-time-2', '10:00');
+    await enterPaceTime(tester, 'pace-plan-time-3', '11:00');
+
+    // Меняем план первого сегмента с 09:00 на 09:10.
+    await tapField(tester, find.byKey(const ValueKey('pace-plan-time-1')));
+    await tester.longPress(find.byKey(const ValueKey('pace-key-⌫')));
+    await tester.pumpAndSettle();
+    for (final key in ['0', '9', '1', '0']) {
+      await tapPaceKey(tester, key);
+    }
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-1')),
+        matching: find.text('09:10'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-2')),
+        matching: find.text('10:10'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-3')),
+        matching: find.text('11:10'),
+      ),
+      findsOneWidget,
+    );
+
+    // Финиш сдвинулся, поэтому итоги пересчитаны.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-overall-plan-time')),
+        matching: find.text('Итоговое плановое время - 03:10'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-overall-plan')),
+        matching: find.text('Итоговый плановый темп - 6:20'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('editing plan pace shifts all following plan times', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+    await enterPaceValue(tester, 'pace-table-distance-2', '20');
+    await enterPaceValue(tester, 'pace-table-distance-3', '30');
+    await enterPaceTime(tester, 'pace-plan-time-1', '09:00');
+    await enterPaceTime(tester, 'pace-plan-time-2', '10:00');
+    await enterPaceTime(tester, 'pace-plan-time-3', '11:00');
+
+    // Меняем темп второго сегмента на 6:20: план станет 10:03.
+    await tapField(tester, find.byKey(const ValueKey('pace-plan-pace-2')));
+    await tester.longPress(find.byKey(const ValueKey('pace-key-⌫')));
+    await tester.pumpAndSettle();
+    for (final key in ['0', '6', '2', '0']) {
+      await tapPaceKey(tester, key);
+    }
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-2')),
+        matching: find.text('10:03'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-3')),
+        matching: find.text('11:03'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('info mode shows the author link', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Info');
+
+    expect(find.text('Ultra Run Calc'), findsOneWidget);
+    expect(find.text('https://github.com/reddragondisciple'), findsOneWidget);
+    expect(find.byKey(const ValueKey('info-github-link')), findsOneWidget);
+  });
+
+  testWidgets('rows PP, limit and distance use the totals text color', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-table-time-1', '08:00');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+
+    const totalsColor = Color(0xFFFFB74D);
+    expect(paceCellColor(tester, 'pace-note-0', 'Start'), totalsColor);
+    expect(paceCellColor(tester, 'pace-note-3', '3'), totalsColor);
+    expect(paceCellColor(tester, 'pace-note-7', 'Finish'), totalsColor);
+    expect(paceCellColor(tester, 'pace-table-time-1', '08:00'), totalsColor);
+    expect(paceCellColor(tester, 'pace-table-distance-1', '10'), totalsColor);
   });
 
   testWidgets('time input is not limited by character count', (tester) async {
