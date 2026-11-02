@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'print_table.dart';
 
 void main() {
   runApp(const CalculatorApp());
@@ -17,7 +20,7 @@ class CalculatorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Калькулятор',
+      title: 'uRunCalc',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -40,11 +43,10 @@ class CalculatorPage extends StatefulWidget {
 }
 
 enum _CalculatorMode {
-  simple('Simple'),
-  engineering('Engineering'),
-  pace('Pace'),
   ultra('Ultra'),
+  pace('Pace'),
   time('Time'),
+  simple('Simple'),
   info('Info');
 
   const _CalculatorMode(this.label);
@@ -83,7 +85,7 @@ class _CalculatorPageState extends State<CalculatorPage>
   bool _resultApproximate = false;
   bool _resultShowsFraction = false;
 
-  _CalculatorMode _mode = _CalculatorMode.simple;
+  _CalculatorMode _mode = _CalculatorMode.ultra;
   bool _angleInDegrees = true;
   bool _modeRestored = false;
   bool _modeTouched = false;
@@ -165,45 +167,6 @@ class _CalculatorPageState extends State<CalculatorPage>
     '0',
     '.',
     '000',
-    '=',
-  ];
-
-  static const List<String> _engineeringKeys = [
-    'sin',
-    'cos',
-    'tan',
-    'ln',
-    'log',
-    '÷',
-    'π',
-    'e',
-    'x²',
-    'n!',
-    '%',
-    '×',
-    '7',
-    '8',
-    '9',
-    'C',
-    '⌫',
-    '-',
-    '4',
-    '5',
-    '6',
-    '(',
-    ')',
-    '+',
-    '1',
-    '2',
-    '3',
-    '√',
-    '^',
-    'angle',
-    '0',
-    '.',
-    '1/x',
-    'Ans',
-    '',
     '=',
   ];
 
@@ -890,17 +853,16 @@ class _CalculatorPageState extends State<CalculatorPage>
                 child: IndexedStack(
                   index: _mode.index,
                   children: [
-                    _buildExpressionMode(isEngineering: false),
-                    _buildExpressionMode(isEngineering: true),
-                    _PaceView(
-                      active: _mode == _CalculatorMode.pace,
-                      surface: _PaceSurface.pace,
-                    ),
                     _PaceView(
                       active: _mode == _CalculatorMode.ultra,
                       surface: _PaceSurface.ultra,
                     ),
+                    _PaceView(
+                      active: _mode == _CalculatorMode.pace,
+                      surface: _PaceSurface.pace,
+                    ),
                     const _TimeView(),
+                    _buildExpressionMode(),
                     const _InfoView(),
                   ],
                 ),
@@ -984,16 +946,12 @@ class _CalculatorPageState extends State<CalculatorPage>
     );
   }
 
-  Widget _buildExpressionMode({required bool isEngineering}) {
+  Widget _buildExpressionMode() {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > constraints.maxHeight;
         final display = _buildDisplayArea(_preview);
-        final keypad = _buildKeypad(
-          keys: isEngineering ? _engineeringKeys : _keys,
-          columns: isEngineering ? 6 : 4,
-          simpleMode: !isEngineering,
-        );
+        final keypad = _buildKeypad(keys: _keys, columns: 4, simpleMode: true);
 
         if (isWide) {
           return Row(
@@ -1342,6 +1300,13 @@ enum _PaceTopField {
 
 enum _PlannedSummarySource { none, pace, time }
 
+class _PrintRequest {
+  const _PrintRequest({required this.landscape, required this.share});
+
+  final bool landscape;
+  final bool share;
+}
+
 enum _PaceFocusKind {
   none,
   top,
@@ -1418,6 +1383,7 @@ class _UltraTableData {
     required this.water,
     required this.food,
     this.locked = false,
+    this.lockedLimits = false,
     this.plannedPaceOverride = '',
     this.plannedTimeOverride = '',
     this.plannedSummarySource = _PlannedSummarySource.none,
@@ -1435,6 +1401,7 @@ class _UltraTableData {
   List<String> water;
   List<String> food;
   bool locked;
+  bool lockedLimits;
   String plannedPaceOverride;
   String plannedTimeOverride;
   _PlannedSummarySource plannedSummarySource;
@@ -1493,8 +1460,6 @@ class _PaceViewState extends State<_PaceView> {
 
   bool _locked = false;
   bool _lockedLimits = false;
-  bool _lockedBasicRows =
-      false; // Блокирует только ряды: ПП, лимиты, расстояние
   bool _keyboardVisible = false;
 
   String _plannedPaceOverride = '';
@@ -1512,6 +1477,10 @@ class _PaceViewState extends State<_PaceView> {
   /// последующие плановые времена на ту же разницу.
   List<String>? _planTimesBeforeEdit;
   int? _planEditColumn;
+
+  /// Первый введённый символ заменяет старое значение поля. Так пользователь
+  /// может нажать на ячейку и сразу набрать, например, 0855.
+  bool _replacePlanInput = false;
 
   final Map<String, _UltraTableData> _tables = {};
   final GlobalKey _focusAnchorKey = GlobalKey();
@@ -1597,6 +1566,7 @@ class _PaceViewState extends State<_PaceView> {
       'water': data.water,
       'food': data.food,
       'locked': data.locked,
+      'lockedLimits': data.lockedLimits,
       'plannedPaceOverride': data.plannedPaceOverride,
       'plannedTimeOverride': data.plannedTimeOverride,
       'plannedSummarySource': data.plannedSummarySource.name,
@@ -1850,6 +1820,9 @@ class _PaceViewState extends State<_PaceView> {
       water: _readStringList(data['water'], columns),
       food: _readStringList(data['food'], columns),
       locked: data['locked'] is bool ? data['locked'] as bool : false,
+      lockedLimits: data['lockedLimits'] is bool
+          ? data['lockedLimits'] as bool
+          : false,
       plannedPaceOverride: _readString(data['plannedPaceOverride']),
       plannedTimeOverride: _readString(data['plannedTimeOverride']),
       plannedSummarySource: _plannedSourceFromName(
@@ -1883,6 +1856,7 @@ class _PaceViewState extends State<_PaceView> {
       water: List<String>.of(_water),
       food: List<String>.of(_food),
       locked: _locked,
+      lockedLimits: _lockedLimits,
       plannedPaceOverride: _plannedPaceOverride,
       plannedTimeOverride: _plannedTimeOverride,
       plannedSummarySource: _plannedSummarySource,
@@ -1897,8 +1871,6 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   void _loadCurrentTable() {
-    // Жирные границы — временное оформление текущей таблицы, поэтому при
-    // переключении мероприятия или дистанции они сбрасываются.
     _boldColumns.clear();
     final data = _tables[_tableKey(_selectedEvent, _selectedDistance)];
     if (data == null) {
@@ -1925,6 +1897,9 @@ class _PaceViewState extends State<_PaceView> {
     }
 
     _columns = data.columns.clamp(3, _maxColumns);
+    _boldColumns.addAll(
+      data.boldColumns.where((index) => index >= 0 && index < _columns),
+    );
     _fitTable = data.fitTable;
     _tableTimes = _resizeList(data.times, _columns);
     _tableDistances = _resizeList(data.distances, _columns);
@@ -1935,7 +1910,11 @@ class _PaceViewState extends State<_PaceView> {
     _food = _resizeList(data.food, _columns);
     _tableDistances[0] = '0.00';
     _locked = data.locked;
+    _lockedLimits = data.lockedLimits;
     _keyboardVisible = false;
+    _replacePlanInput = false;
+    _planTimesBeforeEdit = null;
+    _planEditColumn = null;
     _plannedPaceOverride = data.plannedPaceOverride;
     _plannedTimeOverride = data.plannedTimeOverride;
     _plannedSummarySource = data.plannedSummarySource;
@@ -2142,11 +2121,15 @@ class _PaceViewState extends State<_PaceView> {
     if (distance != null) _applyDistanceDefaults(distance);
 
     _locked = false;
+    _lockedLimits = false;
     _keyboardVisible = false;
     _boldColumns.clear();
     _plannedPaceOverride = '';
     _plannedTimeOverride = '';
     _plannedSummarySource = _PlannedSummarySource.none;
+    _replacePlanInput = false;
+    _planTimesBeforeEdit = null;
+    _planEditColumn = null;
     _limitDays = _computeDays(_tableTimes);
     _planDays = _computeDays(_planTimes);
   }
@@ -2404,6 +2387,7 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   String _tableDistanceText(int column) {
+    if (column == 0) return 'KM';
     final focused =
         _focus.kind == _PaceFocusKind.tableDistance &&
         _focus.tableColumn == column;
@@ -2583,43 +2567,59 @@ class _PaceViewState extends State<_PaceView> {
     return days;
   }
 
-  /// Returns true if the plan time at the given column exceeds the limit time.
-  bool _planExceedsLimit(int column) {
-    final planTime = _parseTimeBuffer(_planTimes[column]);
-    final limitTime = _parseTimeBuffer(_tableTimes[column]);
-    if (planTime == null || limitTime == null) return false;
-
-    // Handle day rollover: compute the actual elapsed time from start
-    final planStart = _parseTimeBuffer(_planTimes[0]);
-    final limitStart = _parseTimeBuffer(_tableTimes[0]);
-    if (planStart == null || limitStart == null) return false;
-
-    // Calculate cumulative minutes from start for both plans
-    var planElapsed = 0;
-    var limitElapsed = 0;
-    int? prevPlanTime;
-    int? prevLimitTime;
-
-    for (var i = 1; i <= column; i++) {
-      final p = _parseTimeBuffer(_planTimes[i]);
-      final l = _parseTimeBuffer(_tableTimes[i]);
-
-      if (p != null && prevPlanTime != null) {
-        var delta = p - prevPlanTime;
-        if (delta < 0) delta += 24 * 60;
-        planElapsed += delta;
-      }
-      if (l != null && prevLimitTime != null) {
-        var delta = l - prevLimitTime;
-        if (delta < 0) delta += 24 * 60;
-        limitElapsed += delta;
-      }
-
-      prevPlanTime = p;
-      prevLimitTime = l;
+  /// Насколько план на этой колонке отличается от лимита, в минутах.
+  /// Положительное значение — план позже лимита, отрицательное — раньше.
+  int? _planLimitDeltaMinutes(int column) {
+    if (column <= 0) return null;
+    final planElapsed = _elapsedByColumn(_planTimes);
+    final limitElapsed = _elapsedByColumn(_tableTimes);
+    if (column >= planElapsed.length || column >= limitElapsed.length) {
+      return null;
     }
+    final plan = planElapsed[column];
+    final limit = limitElapsed[column];
+    if (plan == null || limit == null) return null;
+    return plan - limit;
+  }
 
-    return planElapsed > limitElapsed;
+  /// Суммарное время от старта до каждой колонки. Скачок назад означает
+  /// переход через полночь.
+  List<int?> _elapsedByColumn(List<String> times) {
+    final elapsed = List<int?>.filled(_columns, null);
+    if (times.isEmpty) return elapsed;
+    final start = _parseTimeBuffer(times[0]);
+    if (start == null) return elapsed;
+
+    elapsed[0] = 0;
+    var total = 0;
+    var previous = start;
+    for (var index = 1; index < _columns; index++) {
+      final time = index < times.length ? _parseTimeBuffer(times[index]) : null;
+      if (time == null) continue;
+      var delta = time - previous;
+      if (delta < 0) delta += 24 * 60;
+      total += delta;
+      previous = time;
+      elapsed[index] = total;
+    }
+    return elapsed;
+  }
+
+  /// Сколько минут плана ещё можно выиграть до лимита, чтобы подсветить
+  /// клетку жёлтым как близкую к ограничению.
+  static const int _yellowWarningMinutes = 20;
+
+  Color? _limitTimeHighlight(int column) {
+    final delta = _planLimitDeltaMinutes(column);
+    return delta != null && delta > 0 ? Colors.red : null;
+  }
+
+  Color? _planTimeHighlight(int column) {
+    final delta = _planLimitDeltaMinutes(column);
+    if (delta == null) return null;
+    if (delta > 0) return Colors.red;
+    if (delta < 0 && -delta < _yellowWarningMinutes) return Colors.yellow;
+    return null;
   }
 
   /// Пересчитывает дни только по завершении ввода: при смене поля,
@@ -2773,6 +2773,10 @@ class _PaceViewState extends State<_PaceView> {
     final isPlanEdit =
         focus.kind == _PaceFocusKind.tablePlanTime ||
         focus.kind == _PaceFocusKind.tablePlanPace;
+    _replacePlanInput =
+        isPlanEdit ||
+        focus.kind == _PaceFocusKind.summaryPlannedPace ||
+        focus.kind == _PaceFocusKind.summaryPlannedTime;
     if (!isPlanEdit) {
       _planTimesBeforeEdit = null;
       _planEditColumn = null;
@@ -2821,33 +2825,49 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   void _focusTableTime(int column) {
+    if (_locked || _lockedLimits) return;
     _beginTableFocus(_PaceFocus.tableTime(column));
   }
 
   void _focusTableDistance(int column) {
-    if (column == 0) return;
+    if (column == 0 || _locked || _lockedLimits) return;
     _beginTableFocus(_PaceFocus.tableDistance(column));
   }
 
   void _focusPlanTime(int column) {
+    if (_locked) return;
     _beginTableFocus(_PaceFocus.tablePlanTime(column));
   }
 
   void _focusPlanPace(int column) {
-    if (column == 0) return;
+    if (column == 0 || _locked) return;
     _beginTableFocus(_PaceFocus.tablePlanPace(column));
   }
 
   void _focusSummaryPlannedPace() {
+    if (_locked) return;
     _beginTableFocus(const _PaceFocus.summaryPlannedPace());
   }
 
   void _focusSummaryPlannedTime() {
+    if (_locked) return;
     _beginTableFocus(const _PaceFocus.summaryPlannedTime());
   }
 
   Future<void> _commitInput() async {
     final focus = _focus;
+    if (focus.kind == _PaceFocusKind.summaryPlannedPace &&
+        _plannedSummarySource == _PlannedSummarySource.none &&
+        _plannedPaceOverride.isEmpty) {
+      _finishInput();
+      return;
+    }
+    if (focus.kind == _PaceFocusKind.summaryPlannedTime &&
+        _plannedSummarySource == _PlannedSummarySource.none &&
+        _plannedTimeOverride.isEmpty) {
+      _finishInput();
+      return;
+    }
     var apply = true;
     switch (focus.kind) {
       case _PaceFocusKind.summaryPlannedTime:
@@ -3010,6 +3030,7 @@ class _PaceViewState extends State<_PaceView> {
 
   /// Завершает ввод: пересчитывает дни и убирает клавиатуру.
   void _finishInput() {
+    _replacePlanInput = false;
     final planChanged = _finalizePlanEdit();
     _commitDays();
     if (!planChanged &&
@@ -3126,6 +3147,11 @@ class _PaceViewState extends State<_PaceView> {
 
   void _appendPlanTime(int column, String char) {
     setState(() {
+      if (_replacePlanInput) {
+        _planTimes[column] = '';
+        _planPaces[column] = '';
+        _replacePlanInput = false;
+      }
       _planTimes[column] = _appendTimeBuffer(_planTimes[column], char);
       _planPaces[column] = '';
       _resetPlannedSummary();
@@ -3153,6 +3179,10 @@ class _PaceViewState extends State<_PaceView> {
   void _appendPlanPace(int column, String char) {
     if (column == 0) return;
     setState(() {
+      if (_replacePlanInput) {
+        _planPaces[column] = '';
+        _replacePlanInput = false;
+      }
       _planPaces[column] = _appendPaceBuffer(_planPaces[column], char);
       _applyPlanPace(column);
       _resetPlannedSummary();
@@ -3230,11 +3260,19 @@ class _PaceViewState extends State<_PaceView> {
         _appendPlanPace(_focus.tableColumn, char);
       case _PaceFocusKind.summaryPlannedPace:
         setState(() {
+          if (_replacePlanInput) {
+            _plannedPaceOverride = '';
+            _replacePlanInput = false;
+          }
           _plannedPaceOverride = _appendPaceBuffer(_plannedPaceOverride, char);
           _plannedSummarySource = _PlannedSummarySource.pace;
         });
       case _PaceFocusKind.summaryPlannedTime:
         setState(() {
+          if (_replacePlanInput) {
+            _plannedTimeOverride = '';
+            _replacePlanInput = false;
+          }
           _plannedTimeOverride = _appendTimeBuffer(_plannedTimeOverride, char);
           _plannedSummarySource = _PlannedSummarySource.time;
         });
@@ -3242,6 +3280,7 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   void _backspaceActive() {
+    _replacePlanInput = false;
     setState(() {
       switch (_focus.kind) {
         case _PaceFocusKind.none:
@@ -3293,6 +3332,7 @@ class _PaceViewState extends State<_PaceView> {
   }
 
   void _clearActive() {
+    _replacePlanInput = false;
     setState(() {
       switch (_focus.kind) {
         case _PaceFocusKind.none:
@@ -3329,10 +3369,10 @@ class _PaceViewState extends State<_PaceView> {
           _resetPlannedSummary();
         case _PaceFocusKind.summaryPlannedPace:
           _plannedPaceOverride = '';
-          _plannedSummarySource = _PlannedSummarySource.pace;
+          _plannedSummarySource = _PlannedSummarySource.none;
         case _PaceFocusKind.summaryPlannedTime:
           _plannedTimeOverride = '';
-          _plannedSummarySource = _PlannedSummarySource.time;
+          _plannedSummarySource = _PlannedSummarySource.none;
       }
     });
   }
@@ -3868,34 +3908,23 @@ class _PaceViewState extends State<_PaceView> {
         return SimpleDialog(
           title: const Text('Фиксация'),
           children: [
-            if (!_lockedBasicRows)
+            if (!_locked) ...[
               SimpleDialogOption(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, 'lock_basic_rows'),
-                child: const Text('Зафиксировать лимиты'),
-              )
-            else
-              SimpleDialogOption(
-                onPressed: () =>
-                    Navigator.pop(dialogContext, 'unlock_basic_rows'),
-                child: const Text('Разблокировать лимиты'),
+                onPressed: () => Navigator.pop(
+                  dialogContext,
+                  _lockedLimits ? 'unlock_limits' : 'lock_limits',
+                ),
+                child: Text(
+                  _lockedLimits
+                      ? 'Разблокировать лимиты'
+                      : 'Зафиксировать лимиты',
+                ),
               ),
-            if (!_lockedLimits)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, 'lock_limits'),
-                child: const Text('Зафиксировать лимиты (только лимит)'),
-              )
-            else
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, 'unlock_limits'),
-                child: const Text('Разблокировать лимиты'),
-              ),
-            if (!_locked)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(dialogContext, 'lock_all'),
                 child: const Text('Зафиксировать все'),
-              )
-            else
+              ),
+            ] else
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(dialogContext, 'unlock_all'),
                 child: const Text('Разблокировать все'),
@@ -3913,160 +3942,179 @@ class _PaceViewState extends State<_PaceView> {
     if (!mounted || result == null) return;
 
     switch (result) {
-      case 'lock_basic_rows':
-        await _confirmAndApplyLock(true, false, lockBasicRows: true);
-        break;
-      case 'unlock_basic_rows':
-        await _confirmAndApplyUnlock(true, false, unlockBasicRows: true);
-        break;
       case 'lock_limits':
-        await _confirmAndApplyLock(false, true);
-        break;
+        _applyLocks(limits: true);
       case 'unlock_limits':
-        await _confirmAndApplyUnlock(false, true);
-        break;
+        _applyLocks(limits: false);
       case 'lock_all':
-        await _confirmAndApplyLock(true, true);
-        break;
+        _applyLocks(all: true);
       case 'unlock_all':
-        await _confirmAndApplyUnlock(true, true);
-        break;
+        _applyLocks(all: false);
       case 'print':
         await _showPrintDialog();
-        break;
     }
   }
 
-  Future<void> _confirmAndApplyLock(
-    bool lockAll,
-    bool lockLimitsOnly, {
-    bool lockBasicRows = false,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Зафиксировать введённые значения?'),
-          content: Text(
-            lockAll
-                ? 'Все поля ввода станут недоступны для изменений.'
-                : 'Поля ПП, лимит и расстояние станут недоступны для изменений.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Зафиксировать'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || confirmed != true) return;
+  /// Применяет фиксацию без лишних подтверждений.
+  ///
+  /// [all] управляет полной фиксацией, [limits] — только рядами
+  /// «Лимит» и «Расстояние». Полная фиксация всегда включает лимиты.
+  void _applyLocks({bool? all, bool? limits}) {
     setState(() {
-      if (lockAll) {
-        _locked = true;
-        _lockedLimits = true;
-        _lockedBasicRows = true;
-      } else if (lockBasicRows) {
-        _lockedBasicRows = true;
-        _lockedLimits = true;
-      } else if (lockLimitsOnly) {
-        _lockedLimits = true;
-        _lockedBasicRows = true;
-      } else {
-        // По умолчанию блокируем все
-        _locked = true;
-        _lockedLimits = true;
-        _lockedBasicRows = true;
+      if (all != null) {
+        _locked = all;
+        _lockedLimits = all;
+      }
+      if (limits != null) {
+        if (!_locked) _lockedLimits = limits;
       }
       _keyboardVisible = false;
       _focus = const _PaceFocus.none();
     });
-  }
-
-  Future<void> _confirmAndApplyUnlock(
-    bool unlockAll,
-    bool unlockLimitsOnly, {
-    bool unlockBasicRows = false,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Снять фиксацию?'),
-          content: const Text('Поля снова станут доступны для изменений.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Снять'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted || confirmed != true) return;
-    setState(() {
-      if (unlockAll) {
-        _locked = false;
-        _lockedLimits = false;
-        _lockedBasicRows = false;
-      } else if (unlockBasicRows) {
-        _lockedBasicRows = false;
-        _lockedLimits = false;
-      } else if (unlockLimitsOnly) {
-        _lockedLimits = false;
-        _lockedBasicRows = false;
-      } else {
-        // По умолчанию снимаем все блокировки
-        _locked = false;
-        _lockedLimits = false;
-        _lockedBasicRows = false;
-      }
-      _keyboardVisible = false;
-      _focus = const _PaceFocus.none();
-    });
+    _persist();
   }
 
   Future<void> _showPrintDialog() async {
-    final confirmed = await showDialog<bool>(
+    _hideKeyboard();
+    var landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+
+    final request = await showDialog<_PrintRequest>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Зафиксировать в бумаге?'),
-          content: const Text(
-            'Все поля ввода станут недоступны для изменений.\n'
-            'Это эквивалентно "Зафиксировать все".',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Зафиксировать'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Печать таблицы'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Ориентация страницы:'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Вертикально'),
+                        selected: !landscape,
+                        onSelected: (_) =>
+                            setDialogState(() => landscape = false),
+                      ),
+                      ChoiceChip(
+                        label: const Text('Горизонтально'),
+                        selected: landscape,
+                        onSelected: (_) =>
+                            setDialogState(() => landscape = true),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Печать откроет системный диалог: можно выбрать сетевой '
+                    'принтер или сохранить документ в PDF.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Отмена'),
+                ),
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _PrintRequest(landscape: landscape, share: true),
+                  ),
+                  child: const Text('PDF'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _PrintRequest(landscape: landscape, share: false),
+                  ),
+                  child: const Text('Печать'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
 
-    if (!mounted || confirmed != true) return;
-    setState(() {
-      _locked = true;
-      _keyboardVisible = false;
-      _focus = const _PaceFocus.none();
-    });
+    if (!mounted || request == null) return;
+
+    try {
+      final data = _buildPrintData();
+      final bytes = await buildTablePdf(data, landscape: request.landscape);
+      if (!mounted) return;
+      final fileName = _printFileName(data.event);
+      if (request.share) {
+        await Printing.sharePdf(bytes: bytes, filename: fileName);
+      } else {
+        await Printing.layoutPdf(name: fileName, onLayout: (_) async => bytes);
+      }
+    } catch (error) {
+      if (mounted) _showMessage('Не удалось подготовить печать: $error');
+    }
+  }
+
+  PrintTableData _buildPrintData() {
+    final segmentPaces = <String>[
+      for (var index = 0; index < _columns; index++)
+        index == 0
+            ? 'PACE'
+            : _segmentPace(index) == null
+            ? '—'
+            : _formatPaceSeconds(_segmentPace(index)!),
+    ];
+    final planPaces = <String>[
+      for (var index = 0; index < _columns; index++) _planPaceText(index),
+    ];
+    final columns = <String>[
+      for (var index = 0; index < _columns; index++)
+        _notes[index].trim().isEmpty
+            ? _columnLabel(index)
+            : '${_columnLabel(index)}\n${_notes[index].trim()}',
+    ];
+    final pace = _overallPaceSeconds;
+    final plannedPace = _overallPlannedPaceSeconds;
+
+    return PrintTableData(
+      event: _eventLabel,
+      columns: columns,
+      times: [
+        for (var index = 0; index < _columns; index++) _tableTimeText(index),
+      ],
+      distances: [
+        for (var index = 0; index < _columns; index++)
+          _tableDistanceText(index),
+      ],
+      segmentPaces: segmentPaces,
+      planTimes: [
+        for (var index = 0; index < _columns; index++) _planTimeText(index),
+      ],
+      planPaces: planPaces,
+      water: List<String>.of(_water),
+      food: List<String>.of(_food),
+      limitTime: _formatElapsedMinutes(_totalLimitMinutes),
+      limitPace: pace == null ? '—' : _formatPaceSeconds(pace),
+      plannedPace: plannedPace == null ? '—' : _formatPaceSeconds(plannedPace),
+      plannedTime: _formatElapsedMinutes(_overallPlannedFinishMinutes),
+      boldColumns: _boldColumns.toList()..sort(),
+      dayIndexes: List<int>.of(_limitDays),
+    );
+  }
+
+  String _printFileName(String event) {
+    final safe = event
+        .replaceAll(RegExp(r'[^0-9A-Za-zА-Яа-яЁё_-]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_');
+    final stamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(RegExp(r'[:.]'), '-')
+        .substring(0, 19);
+    return 'uRunCalc_${safe.isEmpty ? 'table' : safe}_$stamp.pdf';
   }
 
   Widget _toolbarButton({
@@ -4612,10 +4660,14 @@ class _PaceViewState extends State<_PaceView> {
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-time',
-                text: _formatElapsedMinutes(_overallPlannedFinishMinutes),
+                text: _focus.kind == _PaceFocusKind.summaryPlannedTime
+                    ? _timeBufferText(_plannedTimeOverride)
+                    : _formatElapsedMinutes(_overallPlannedFinishMinutes),
                 focused: _focus.kind == _PaceFocusKind.summaryPlannedTime,
-                editable: true,
-                onTap: _focusSummaryPlannedTime,
+                editable: !_locked,
+                cursorFirst: true,
+                color: Colors.white,
+                onTap: _locked ? null : _focusSummaryPlannedTime,
                 onLongPress: () => _showTotalDescription(
                   'Итоговое плановое время',
                   _plannedTimeDescription,
@@ -4630,12 +4682,16 @@ class _PaceViewState extends State<_PaceView> {
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-pace',
-                text: _overallPlannedPaceSeconds == null
+                text: _focus.kind == _PaceFocusKind.summaryPlannedPace
+                    ? _paceBufferText(_plannedPaceOverride)
+                    : _overallPlannedPaceSeconds == null
                     ? '—'
                     : _formatPaceSeconds(_overallPlannedPaceSeconds!),
                 focused: _focus.kind == _PaceFocusKind.summaryPlannedPace,
-                editable: true,
-                onTap: _focusSummaryPlannedPace,
+                editable: !_locked,
+                cursorFirst: true,
+                color: Colors.white,
+                onTap: _locked ? null : _focusSummaryPlannedPace,
                 onLongPress: () => _showTotalDescription(
                   'Итоговый плановый темп',
                   _plannedPaceDescription,
@@ -4880,7 +4936,7 @@ class _PaceViewState extends State<_PaceView> {
       text: 'Total',
       result: true,
       bold: true,
-      fontSize: 13,
+      fontSize: 30,
     );
   }
 
@@ -4898,6 +4954,8 @@ class _PaceViewState extends State<_PaceView> {
     required String text,
     bool focused = false,
     bool editable = false,
+    bool cursorFirst = false,
+    Color? color,
     VoidCallback? onTap,
     VoidCallback? onLongPress,
   }) {
@@ -4906,9 +4964,11 @@ class _PaceViewState extends State<_PaceView> {
       text: text,
       focused: focused,
       editable: editable,
+      cursorFirst: cursorFirst,
       result: true,
       bold: true,
-      fontSize: 13,
+      fontSize: 30,
+      color: color,
       onTap: onTap,
       onLongPress: onLongPress,
     );
@@ -4968,14 +5028,17 @@ class _PaceViewState extends State<_PaceView> {
     final seconds = _overallPlannedPaceSeconds;
     final cell = _interactiveCell(
       key: 'pace-overall-plan',
-      text:
-          'Итоговый плановый темп - '
-          '${seconds == null ? '—' : _formatPaceSeconds(seconds)}',
+      text: focused
+          ? 'Итоговый плановый темп - ${_paceBufferText(_plannedPaceOverride)}'
+          : 'Итоговый плановый темп - '
+                '${seconds == null ? '—' : _formatPaceSeconds(seconds)}',
       focused: focused,
-      editable: true,
+      editable: !_locked,
+      cursorFirst: true,
       result: true,
       fontSize: 14,
-      onTap: () => _focusSummaryPlannedPace(),
+      color: Colors.white,
+      onTap: _locked ? null : () => _focusSummaryPlannedPace(),
     );
 
     return expanded
@@ -4993,14 +5056,18 @@ class _PaceViewState extends State<_PaceView> {
     final focused = _focus.kind == _PaceFocusKind.summaryPlannedTime;
     final cell = _interactiveCell(
       key: 'pace-overall-plan-time',
-      text:
-          'Итоговое плановое время - '
-          '${_formatElapsedMinutes(_overallPlannedFinishMinutes)}',
+      text: focused
+          ? 'Итоговое плановое время - '
+                '${_timeBufferText(_plannedTimeOverride)}'
+          : 'Итоговое плановое время - '
+                '${_formatElapsedMinutes(_overallPlannedFinishMinutes)}',
       focused: focused,
-      editable: true,
+      editable: !_locked,
+      cursorFirst: true,
       result: true,
       fontSize: 14,
-      onTap: () => _focusSummaryPlannedTime(),
+      color: Colors.white,
+      onTap: _locked ? null : () => _focusSummaryPlannedTime(),
     );
 
     return expanded
@@ -5032,10 +5099,12 @@ class _PaceViewState extends State<_PaceView> {
     final textColor = _textColorForRow();
 
     if (compact) {
-      final isBasicRow = index <= 2; // PP, лимиты, расстояние
-      final editable = !_locked && !(_lockedBasicRows && isBasicRow);
-      final borderColor =
-          dayBorder ?? (editable ? Colors.grey.shade700 : Colors.grey.shade900);
+      final editable = !_locked;
+      final numericLabel = int.tryParse(label) != null;
+      final borderColor = bold
+          ? Colors.grey.shade500
+          : dayBorder ??
+                (editable ? Colors.grey.shade700 : Colors.grey.shade900);
 
       return InkWell(
         key: ValueKey('pace-note-$index'),
@@ -5046,7 +5115,7 @@ class _PaceViewState extends State<_PaceView> {
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
           decoration: BoxDecoration(
             color: Colors.black,
-            border: Border.all(color: borderColor, width: bold ? 2.5 : 1),
+            border: Border.all(color: borderColor, width: bold ? 3 : 1),
           ),
           child: Row(
             children: [
@@ -5066,6 +5135,9 @@ class _PaceViewState extends State<_PaceView> {
               if (note.isNotEmpty) ...[
                 SizedBox(width: 2),
                 Expanded(
+                  // Номер ПП занимает меньше места, чтобы заметке осталось
+                  // больше ширины и её шрифт не мельчал.
+                  flex: numericLabel ? 5 : 3,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text(
@@ -5085,10 +5157,10 @@ class _PaceViewState extends State<_PaceView> {
       );
     }
 
-    final isBasicRow = index <= 2; // PP, лимиты, расстояние
-    final editable = !_locked && !(_lockedBasicRows && isBasicRow);
-    final borderColor =
-        dayBorder ?? (editable ? Colors.grey.shade700 : Colors.grey.shade900);
+    final editable = !_locked;
+    final borderColor = bold
+        ? Colors.grey.shade500
+        : dayBorder ?? (editable ? Colors.grey.shade700 : Colors.grey.shade900);
     return InkWell(
       key: ValueKey('pace-note-$index'),
       onTap: editable ? () => _editNote(index) : null,
@@ -5098,7 +5170,7 @@ class _PaceViewState extends State<_PaceView> {
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         decoration: BoxDecoration(
           color: Colors.black,
-          border: Border.all(color: borderColor, width: bold ? 2.5 : 1),
+          border: Border.all(color: borderColor, width: bold ? 3 : 1),
         ),
         child: Column(
           children: [
@@ -5182,21 +5254,22 @@ class _PaceViewState extends State<_PaceView> {
       final focused =
           _focus.kind == _PaceFocusKind.tableTime &&
           _focus.tableColumn == index;
-      // Check if plan time exceeds this limit - show red flash on limit cell
-      final planExceeds = _planExceedsLimit(index);
+      // Красным подсвечиваются обе клетки, если план позже лимита.
+      final highlight = _limitTimeHighlight(index);
       // Row 1 (index 0 in times row) has default tan color
       final textColor = _cellTextColor(1);
+      final editable = !_locked && !_lockedLimits;
 
       return _interactiveCell(
         key: 'pace-table-time-$index',
         text: _tableTimeText(index),
         placeholder: _tableTimes[index].isEmpty,
         focused: focused,
-        editable: true,
+        editable: editable,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
-        color: planExceeds ? Colors.red : textColor,
-        onTap: () => _focusTableTime(index),
+        color: highlight ?? textColor,
+        onTap: editable ? () => _focusTableTime(index) : null,
       );
     });
   }
@@ -5208,17 +5281,18 @@ class _PaceViewState extends State<_PaceView> {
           _focus.tableColumn == index;
       // Row 2 (index 1 in distances row) has default tan color
       final textColor = _cellTextColor(2);
+      final editable = !_locked && !_lockedLimits;
 
       return _interactiveCell(
         key: 'pace-table-distance-$index',
         text: _tableDistanceText(index),
         placeholder: _tableDistances[index].isEmpty,
         focused: focused,
-        editable: true,
+        editable: editable,
         dayBorder: _dayBorderColor(index, _limitDays),
         boldBorder: _boldColumns.contains(index),
         color: textColor,
-        onTap: () => _focusTableDistance(index),
+        onTap: editable ? () => _focusTableDistance(index) : null,
       );
     });
   }
@@ -5254,18 +5328,22 @@ class _PaceViewState extends State<_PaceView> {
           _focus.tableColumn == index;
       // Row 6 has white color for plan time
       final textColor = _cellTextColor(6, isPlanRow: true);
-      final exceedsLimit = _planExceedsLimit(index);
+      // Красным — план позже лимита, жёлтым — план лучше лимита менее чем
+      // на 20 минут.
+      final highlight = _planTimeHighlight(index);
+      final editable = !_locked;
 
       return _interactiveCell(
         key: 'pace-plan-time-$index',
         text: _planTimeText(index),
         placeholder: _planTimes[index].isEmpty,
         focused: focused,
-        editable: true,
+        editable: editable,
+        cursorFirst: focused,
         dayBorder: _dayBorderColor(index, _planDays),
         boldBorder: _boldColumns.contains(index),
-        color: exceedsLimit ? Colors.red : textColor,
-        onTap: () => _focusPlanTime(index),
+        color: highlight ?? textColor,
+        onTap: editable ? () => _focusPlanTime(index) : null,
       );
     });
   }
@@ -5278,6 +5356,7 @@ class _PaceViewState extends State<_PaceView> {
           key: 'pace-plan-pace-0',
           text: 'PACE',
           result: true,
+          color: Colors.white,
           dayBorder: _dayBorderColor(index, _planDays),
           boldBorder: _boldColumns.contains(index),
           onTap: _hideKeyboard,
@@ -5290,17 +5369,19 @@ class _PaceViewState extends State<_PaceView> {
       // Row 7 has white color for plan pace
       final textColor = _cellTextColor(7, isPlanRow: true);
       final planned = paces[index];
+      final editable = !_locked;
 
       return _interactiveCell(
         key: 'pace-plan-pace-$index',
         text: _planPaceText(index),
         placeholder: !focused && planned == null,
         focused: focused,
-        editable: true,
-        color: _paceHighlight(index, paces) ?? textColor,
+        editable: editable,
+        cursorFirst: focused,
+        color: textColor,
         dayBorder: _dayBorderColor(index, _planDays),
         boldBorder: _boldColumns.contains(index),
-        onTap: () => _focusPlanPace(index),
+        onTap: editable ? () => _focusPlanPace(index) : null,
       );
     });
   }
@@ -5421,10 +5502,11 @@ class _PaceViewState extends State<_PaceView> {
     required bool showDash,
   }) {
     final editable = !_locked;
-    final borderColor =
-        _dayBorderColor(index, _limitDays) ??
-        (editable ? Colors.grey.shade700 : Colors.grey.shade900);
     final bold = _boldColumns.contains(index);
+    final borderColor = bold
+        ? Colors.grey.shade500
+        : _dayBorderColor(index, _limitDays) ??
+              (editable ? Colors.grey.shade700 : Colors.grey.shade900);
 
     return InkWell(
       key: ValueKey('$keyPrefix-$index'),
@@ -5440,7 +5522,7 @@ class _PaceViewState extends State<_PaceView> {
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
         decoration: BoxDecoration(
           color: Colors.black,
-          border: Border.all(color: borderColor, width: bold ? 2.5 : 1),
+          border: Border.all(color: borderColor, width: bold ? 3 : 1),
         ),
         child: showPlaceholder
             ? Center(
@@ -5527,6 +5609,7 @@ class _PaceViewState extends State<_PaceView> {
     bool placeholder = false,
     bool result = false,
     bool bold = false,
+    bool cursorFirst = false,
     int maxLines = 1,
     double fontSize = 30,
     Color? color,
@@ -5535,17 +5618,14 @@ class _PaceViewState extends State<_PaceView> {
     VoidCallback? onTap,
     VoidCallback? onLongPress,
   }) {
-    if (editable && (_locked || _lockedLimits)) {
-      editable = false;
-      onTap = null;
-    }
-
     final defaultBorder = editable
         ? Colors.grey.shade700
         : Colors.grey.shade900;
     final borderColor = focused
         ? const Color(0xFF4CAF50)
-        : dayBorder ?? (boldBorder ? const Color(0xFFFF9800) : defaultBorder);
+        : boldBorder
+        ? Colors.grey.shade500
+        : dayBorder ?? defaultBorder;
     final borderWidth = focused ? 1.5 : (boldBorder ? 3.0 : 1.0);
 
     final cell = InkWell(
@@ -5564,6 +5644,7 @@ class _PaceViewState extends State<_PaceView> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (focused && cursorFirst) _cursor(),
               Text(
                 text,
                 maxLines: maxLines,
@@ -5577,7 +5658,7 @@ class _PaceViewState extends State<_PaceView> {
                   fontWeight: bold ? FontWeight.bold : null,
                 ),
               ),
-              if (focused) _cursor(),
+              if (focused && !cursorFirst) _cursor(),
             ],
           ),
         ),
@@ -6501,7 +6582,7 @@ String _historyText(String expression, Rational value, bool approximate) {
 class _InfoView extends StatelessWidget {
   const _InfoView();
 
-  static const String _url = 'https://github.com/reddragondisciple';
+  static const String _url = 'https://github.com/reddragondisciple/uRunCalc';
 
   Future<void> _copyLink(BuildContext context) async {
     await Clipboard.setData(const ClipboardData(text: _url));
@@ -6526,7 +6607,7 @@ class _InfoView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             const Text(
-              'Ultra Run Calc',
+              'uRunCalc',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 22,

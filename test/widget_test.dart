@@ -9,20 +9,20 @@ import 'package:shared_preferences/shared_preferences.dart';
 Future<void> pumpCalculator(
   WidgetTester tester, {
   bool seedUltraDefaults = false,
+  String? mode = 'simple',
 }) async {
-  SharedPreferences.setMockInitialValues(
-    seedUltraDefaults
-        ? {}
-        : {
-            'ultra_state_v1': jsonEncode({
-              'tables': {
-                'GRUT': {
-                  'T100': {'columns': 8, 'fitTable': true, 'seeded': true},
-                },
-              },
-            }),
-          },
-  );
+  final values = <String, Object>{};
+  if (mode != null) values['app_mode_v1'] = mode;
+  if (!seedUltraDefaults) {
+    values['ultra_state_v1'] = jsonEncode({
+      'tables': {
+        'GRUT': {
+          'T100': {'columns': 8, 'fitTable': true, 'seeded': true},
+        },
+      },
+    });
+  }
+  SharedPreferences.setMockInitialValues(values);
   await tester.pumpWidget(const CalculatorApp());
   await tester.pumpAndSettle();
 }
@@ -410,26 +410,21 @@ void main() {
     expect(inCurrentDisplay('2'), findsOneWidget);
   });
 
-  testWidgets('engineering mode shows functions and computes factorial', (
-    tester,
-  ) async {
+  testWidgets('simple mode computes basic expressions', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);
-    await switchMode(tester, 'Engineering');
+    await switchMode(tester, 'Simple');
 
-    expect(find.byKey(const ValueKey('key_sin')), findsOneWidget);
-    expect(find.byKey(const ValueKey('key_π')), findsOneWidget);
-    expect(find.byKey(const ValueKey('key_angle')), findsOneWidget);
-    expect(find.byKey(const ValueKey('key_Ans')), findsOneWidget);
+    expect(find.byKey(const ValueKey('key_sin')), findsNothing);
+    expect(find.byKey(const ValueKey('key_π')), findsNothing);
+    expect(find.byKey(const ValueKey('key_angle')), findsNothing);
 
     await tapKey(tester, '5');
-    await tapKey(tester, 'n!');
+    await tapKey(tester, '+');
+    await tapKey(tester, '3');
     await tapKey(tester, '=');
 
-    expect(inCurrentDisplay('120'), findsOneWidget);
-
-    await tapKey(tester, 'angle');
-    expect(find.text('RAD'), findsOneWidget);
+    expect(inCurrentDisplay('8'), findsOneWidget);
   });
 
   testWidgets('pace mode computes pace from distance and time', (tester) async {
@@ -542,28 +537,27 @@ void main() {
     }
   });
 
-  testWidgets(
-    'engineering keypad has no triple zero and keeps zero bottom left',
-    (tester) async {
-      usePhoneSize(tester);
-      await pumpCalculator(tester);
-      await switchMode(tester, 'Engineering');
+  testWidgets('simple keypad keeps triple zero and zero bottom left', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Simple');
 
-      expect(find.byKey(const ValueKey('key_000')), findsNothing);
+    expect(find.byKey(const ValueKey('key_000')), findsOneWidget);
 
-      final zero = tester.getCenter(find.byKey(const ValueKey('key_0')));
-      final dot = tester.getCenter(find.byKey(const ValueKey('key_.')));
-      final inverse = tester.getCenter(find.byKey(const ValueKey('key_1/x')));
-      final equals = tester.getCenter(find.byKey(const ValueKey('key_=')));
+    final zero = tester.getCenter(find.byKey(const ValueKey('key_0')));
+    final dot = tester.getCenter(find.byKey(const ValueKey('key_.')));
+    final triple = tester.getCenter(find.byKey(const ValueKey('key_000')));
+    final equals = tester.getCenter(find.byKey(const ValueKey('key_=')));
 
-      expect(zero.dy, dot.dy);
-      expect(dot.dy, inverse.dy);
-      expect(inverse.dy, equals.dy);
-      expect(zero.dx, lessThan(dot.dx));
-      expect(dot.dx, lessThan(inverse.dx));
-      expect(inverse.dx, lessThan(equals.dx));
-    },
-  );
+    expect(zero.dy, dot.dy);
+    expect(dot.dy, triple.dy);
+    expect(triple.dy, equals.dy);
+    expect(zero.dx, lessThan(dot.dx));
+    expect(dot.dx, lessThan(triple.dx));
+    expect(triple.dx, lessThan(equals.dx));
+  });
 
   testWidgets('pace toolbar selects events and resizes columns', (
     tester,
@@ -960,8 +954,8 @@ void main() {
 
     await pumpCalculator(tester);
 
-    await switchMode(tester, 'Engineering');
-    expect(find.byKey(const ValueKey('key_sin')), findsOneWidget);
+    await switchMode(tester, 'Simple');
+    expect(find.byKey(const ValueKey('key_1')), findsOneWidget);
 
     await switchMode(tester, 'Pace');
     expect(find.byKey(const ValueKey('pace-calc-pace')), findsOneWidget);
@@ -1027,8 +1021,8 @@ void main() {
     await enterPaceTime(tester, 'pace-plan-time-2', '08:50');
     await enterPaceTime(tester, 'pace-plan-time-3', '09:15');
 
-    expect(paceCellColor(tester, 'pace-plan-pace-2', '20:00'), Colors.red);
-    expect(paceCellColor(tester, 'pace-plan-pace-3', '25:00'), Colors.amber);
+    expect(paceCellColor(tester, 'pace-plan-pace-2', '20:00'), Colors.white);
+    expect(paceCellColor(tester, 'pace-plan-pace-3', '25:00'), Colors.white);
     expect(paceCellColor(tester, 'pace-plan-pace-1', '30:00'), Colors.white);
   });
 
@@ -1469,9 +1463,6 @@ void main() {
     expect(find.text('Фиксация'), findsOneWidget);
     await tester.tap(find.text('Зафиксировать все'));
     await tester.pumpAndSettle();
-    expect(find.text('Зафиксировать введённые значения?'), findsOneWidget);
-    await tester.tap(find.text('Зафиксировать'));
-    await tester.pumpAndSettle();
 
     expect(
       find.descendant(
@@ -1508,13 +1499,140 @@ void main() {
     expect(find.text('Фиксация'), findsOneWidget);
     await tester.tap(find.text('Разблокировать все'));
     await tester.pumpAndSettle();
-    expect(find.text('Снять фиксацию?'), findsOneWidget);
-    await tester.tap(find.text('Снять'));
+
+    await tester.tap(find.byKey(const ValueKey('pace-table-time-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pace-key-1')), findsOneWidget);
+  });
+
+  testWidgets('locking limits locks only limit and distance rows', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-table-time-0', '08:00');
+
+    await tester.tap(find.byKey(const ValueKey('pace-lock-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Зафиксировать лимиты'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('pace-table-time-0')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pace-key-1')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('pace-table-distance-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pace-key-1')), findsNothing);
+
+    await tapField(tester, find.byKey(const ValueKey('pace-plan-time-1')));
+    expect(find.byKey(const ValueKey('pace-key-1')), findsOneWidget);
+    await enterPaceTime(tester, 'pace-plan-time-1', '0900');
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('pace-lock-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Разблокировать лимиты'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('pace-table-time-0')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pace-key-1')), findsOneWidget);
+  });
+
+  testWidgets('paper lock opens the print dialog', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await tester.tap(find.byKey(const ValueKey('pace-lock-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Зафиксировать в бумаге'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Печать таблицы'), findsOneWidget);
+    expect(find.text('Вертикально'), findsOneWidget);
+    expect(find.text('Горизонтально'), findsOneWidget);
+    expect(find.text('Печать'), findsOneWidget);
+    expect(find.text('PDF'), findsOneWidget);
+
+    await tester.tap(find.text('Отмена'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('plan input replaces the old value after a tap', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-plan-time-1', '0755');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+    await enterPaceValue(tester, 'pace-table-distance-2', '20');
+
+    await tapField(tester, find.byKey(const ValueKey('pace-plan-time-1')));
+    for (final key in ['0', '8', '5', '5']) {
+      await tapPaceKey(tester, key);
+    }
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-plan-time-1')),
+        matching: find.text('08:55'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('reset clears the focused planned summary value', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await tapField(tester, find.byKey(const ValueKey('pace-overall-plan')));
+    for (final key in ['0', '6', '0', '0']) {
+      await tapPaceKey(tester, key);
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-overall-plan')),
+        matching: find.text('Итоговый плановый темп - 6:00'),
+      ),
+      findsOneWidget,
+    );
+
+    await tapPaceKey(tester, 'Сброс');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-overall-plan')),
+        matching: find.text('Итоговый плановый темп - 0:00'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('ultra landscape Total cells use the regular font size', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    final header = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-total-header')),
+        matching: find.text('Total'),
+      ),
+    );
+    expect(header.style?.fontSize, 30);
   });
 
   testWidgets('ultra water words are coloured and rows are tall', (
@@ -1623,7 +1741,7 @@ void main() {
       );
     }
     const grutDistances = [
-      '0.00',
+      'KM',
       '11',
       '18.8',
       '30',
@@ -1668,7 +1786,7 @@ void main() {
       );
     }
     const vrDistances = [
-      '0.00',
+      'KM',
       '20.3',
       '32.2',
       '47.3',
@@ -1895,6 +2013,14 @@ void main() {
     );
   });
 
+  testWidgets('first launch starts in Ultra mode', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester, mode: null);
+
+    expect(find.text('Ultra'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pace-table-time-0')), findsOneWidget);
+  });
+
   testWidgets('last selected mode is restored after restart', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);
@@ -1998,7 +2124,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-table-distance-0')),
-        matching: find.text('0.00'),
+        matching: find.text('KM'),
       ),
       findsOneWidget,
     );
@@ -2173,16 +2299,21 @@ void main() {
     await tester.longPress(find.byKey(const ValueKey('pace-note-0')));
     await tester.pumpAndSettle();
 
-    // Ячейки заметок/воды/еды рисуют рамку 2.5, ячейки таблицы — 3.0.
-    const thinBoldKeys = {'pace-note-0', 'pace-water-0', 'pace-food-0'};
+    // Все ячейки колонки получают жирную границу 3.0.
     for (final key in columnKeys) {
-      expect(
-        paceCellBorderWidth(tester, key),
-        thinBoldKeys.contains(key) ? 2.5 : 3.0,
-      );
+      expect(paceCellBorderWidth(tester, key), 3.0);
     }
     // Соседняя колонка остаётся обычной.
     expect(paceCellBorderWidth(tester, 'pace-table-time-1'), 1);
+
+    // Жирная колонка сохраняется после перезапуска приложения.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const CalculatorApp());
+    await tester.pumpAndSettle();
+    await switchMode(tester, 'Ultra');
+    expect(paceCellBorderWidth(tester, 'pace-note-0'), 3.0);
+    expect(paceCellBorderWidth(tester, 'pace-table-time-0'), 3.0);
 
     await tester.longPress(find.byKey(const ValueKey('pace-note-0')));
     await tester.pumpAndSettle();
@@ -2206,10 +2337,10 @@ void main() {
     await tester.longPress(find.byKey(const ValueKey('pace-note-0')));
     await tester.pumpAndSettle();
 
-    expect(paceCellBorderWidth(tester, 'pace-note-0'), 2.5);
+    expect(paceCellBorderWidth(tester, 'pace-note-0'), 3.0);
     expect(paceCellBorderWidth(tester, 'pace-table-time-0'), 3.0);
-    expect(paceCellBorderWidth(tester, 'pace-water-0'), 2.5);
-    expect(paceCellBorderWidth(tester, 'pace-food-0'), 2.5);
+    expect(paceCellBorderWidth(tester, 'pace-water-0'), 3.0);
+    expect(paceCellBorderWidth(tester, 'pace-food-0'), 3.0);
   });
 
   testWidgets('planned time uses limit start and writes plan paces', (
@@ -2425,8 +2556,11 @@ void main() {
     await pumpCalculator(tester);
     await switchMode(tester, 'Info');
 
-    expect(find.text('Ultra Run Calc'), findsOneWidget);
-    expect(find.text('https://github.com/reddragondisciple'), findsOneWidget);
+    expect(find.text('uRunCalc'), findsOneWidget);
+    expect(
+      find.text('https://github.com/reddragondisciple/uRunCalc'),
+      findsOneWidget,
+    );
     expect(find.byKey(const ValueKey('info-github-link')), findsOneWidget);
   });
 
@@ -2446,6 +2580,65 @@ void main() {
     expect(paceCellColor(tester, 'pace-note-7', 'Finish'), totalsColor);
     expect(paceCellColor(tester, 'pace-table-time-1', '08:00'), totalsColor);
     expect(paceCellColor(tester, 'pace-table-distance-1', '10'), totalsColor);
+  });
+
+  testWidgets('plan rows and planned totals use white text', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await enterPaceTime(tester, 'pace-plan-time-1', '09:00');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+
+    expect(paceCellColor(tester, 'pace-plan-time-1', '09:00'), Colors.white);
+    expect(paceCellColor(tester, 'pace-plan-pace-1', '6:00'), Colors.white);
+    expect(
+      paceCellColor(
+        tester,
+        'pace-overall-plan',
+        'Итоговый плановый темп - 6:00',
+      ),
+      Colors.white,
+    );
+    expect(
+      paceCellColor(
+        tester,
+        'pace-overall-plan-time',
+        'Итоговое плановое время - 01:00',
+      ),
+      Colors.white,
+    );
+  });
+
+  testWidgets('plan time is red behind the limit and yellow when close', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await enterPaceTime(tester, 'pace-table-time-0', '08:00');
+    await enterPaceTime(tester, 'pace-table-time-1', '09:00');
+    await enterPaceTime(tester, 'pace-table-time-2', '10:00');
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await enterPaceTime(tester, 'pace-plan-time-1', '09:20');
+
+    // План отстаёт от лимита: красные обе клетки.
+    expect(paceCellColor(tester, 'pace-table-time-1', '09:00'), Colors.red);
+    expect(paceCellColor(tester, 'pace-plan-time-1', '09:20'), Colors.red);
+
+    // План раньше лимита менее чем на 20 минут: жёлтая клетка плана.
+    await enterPaceTime(tester, 'pace-plan-time-2', '09:55');
+    expect(paceCellColor(tester, 'pace-plan-time-2', '09:55'), Colors.yellow);
+    expect(
+      paceCellColor(tester, 'pace-table-time-2', '10:00'),
+      const Color(0xFFFFB74D),
+    );
+
+    // Выигрыш больше 20 минут больше не подсвечивается.
+    await enterPaceTime(tester, 'pace-plan-time-2', '09:30');
+    expect(paceCellColor(tester, 'pace-plan-time-2', '09:30'), Colors.white);
   });
 
   testWidgets('time input is not limited by character count', (tester) async {

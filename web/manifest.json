@@ -1,11 +1,11 @@
 {
-    "name": "Калькулятор",
-    "short_name": "Калькулятор",
+    "name": "uRunCalc",
+    "short_name": "uRunCalc",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#000000",
     "theme_color": "#FF9800",
-    "description": "Калькулятор с точной рациональной арифметикой и отображением дробей.",
+    "description": "Калькулятор темпа для трейловых ультрамарафонов.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
