@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:ultra_run_calc/core/app_strings.dart';
 import 'package:ultra_run_calc/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -944,6 +945,22 @@ void main() {
     expect(find.text('24'), findsOneWidget);
     expect(find.text('1440'), findsOneWidget);
     expect(find.text('86400'), findsOneWidget);
+  });
+
+  testWidgets('time and info labels come from AppStrings', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester, mode: 'time');
+
+    expect(find.text(AppStrings.timeTabDifference), findsWidgets);
+    expect(find.text(AppStrings.timeTabAddSubtract), findsOneWidget);
+    expect(find.text(AppStrings.timeTabConverter), findsOneWidget);
+    expect(find.text(AppStrings.timeStart), findsOneWidget);
+    expect(find.text(AppStrings.timeEnd), findsOneWidget);
+
+    await switchMode(tester, 'Info');
+    expect(find.text(AppStrings.appName), findsOneWidget);
+    expect(find.text(AppStrings.infoAuthor), findsOneWidget);
+    expect(find.text(AppStrings.infoCopyHint), findsOneWidget);
   });
 
   testWidgets('all modes fit a small phone', (tester) async {
@@ -2699,5 +2716,40 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('semantics describe the lock button and plan status', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    // У кнопки-замка нет подписи, поэтому у неё отдельная семантическая метка.
+    expect(find.bySemanticsLabel('Зафиксировать таблицу'), findsOneWidget);
+
+    await enterPaceTime(tester, 'pace-table-time-0', '08:00');
+    await enterPaceTime(tester, 'pace-table-time-1', '09:00');
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await enterPaceTime(tester, 'pace-plan-time-1', '09:20');
+
+    final planCell = find.bySemanticsLabel('План, 09:20');
+    expect(planCell, findsOneWidget);
+    expect(tester.getSemantics(planCell).hint, 'Позже лимита');
+
+    final limitCell = find.bySemanticsLabel('Лимит, 09:00');
+    expect(limitCell, findsOneWidget);
+    expect(tester.getSemantics(limitCell).hint, 'Позже плана');
+
+    // Заголовки колонок подсказывают, что колонку можно выделить долгим
+    // нажатием.
+    expect(find.bySemanticsLabel('Start'), findsOneWidget);
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Start')).hint,
+      'Долгое нажатие выделяет колонку',
+    );
+
+    handle.dispose();
   });
 }

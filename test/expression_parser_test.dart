@@ -1,4 +1,4 @@
-import 'package:ultra_run_calc/main.dart';
+import 'package:ultra_run_calc/core/expression_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String evaluate(String expression) {
