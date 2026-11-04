@@ -268,7 +268,7 @@ void main() {
     await tapKey(tester, '0');
     await tapKey(tester, '=');
 
-    expect(find.text('Деление на ноль'), findsOneWidget);
+    expect(find.text(AppStrings.errorDivisionByZero), findsOneWidget);
   });
 
   testWidgets('backspace removes the last character', (tester) async {
@@ -961,6 +961,25 @@ void main() {
     expect(find.text(AppStrings.appName), findsOneWidget);
     expect(find.text(AppStrings.infoAuthor), findsOneWidget);
     expect(find.text(AppStrings.infoCopyHint), findsOneWidget);
+  });
+
+  testWidgets('pace and ultra labels come from AppStrings', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester, mode: 'pace');
+
+    expect(find.text(AppStrings.paceCalcPace), findsWidgets);
+    expect(find.text(AppStrings.paceCalcDistance), findsWidgets);
+    expect(find.text(AppStrings.paceCalcTime), findsWidgets);
+    expect(find.text(AppStrings.paceHintPace), findsOneWidget);
+    expect(find.text(AppStrings.paceHintKm), findsWidgets);
+    expect(
+      find.byKey(ValueKey('pace-key-${AppStrings.reset}')),
+      findsOneWidget,
+    );
+
+    await switchMode(tester, 'Ultra');
+    expect(find.text(AppStrings.paceRowWater), findsOneWidget);
+    expect(find.text(AppStrings.paceRowFood), findsOneWidget);
   });
 
   testWidgets('all modes fit a small phone', (tester) async {

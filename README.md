@@ -299,7 +299,9 @@ dart format --output=none --set-exit-if-changed lib test
 - `lib/core/persisted_json_store.dart` — сохранение состояния с debounce,
   последовательной записью и версией схемы;
 - `lib/core/app_strings.dart` — словарь текстов интерфейса с русскими
-  значениями по умолчанию (первый шаг к локализации);
+  значениями по умолчанию (первый шаг к локализации); из него берут строки
+  Simple, Info, Time, Pace, Ultra, PDF-таблица, подписи клавиш для screen
+  reader и сообщения об ошибках вычислений;
 - `lib/core/time_math.dart` — общие примитивы форматирования и разбора времени,
   длительности и десятичных чисел;
 - `lib/core/key_labels.dart` — словесные подписи клавиш для screen reader;

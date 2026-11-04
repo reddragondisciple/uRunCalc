@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import 'core/app_strings.dart';
+
 /// Данные, необходимые для печати таблицы Ultra.
 class PrintTableData {
   const PrintTableData({
@@ -86,12 +88,12 @@ Future<Uint8List> buildTablePdf(
         margin: const pw.EdgeInsets.all(22),
         build: (context) => [
           pw.Text(
-            data.event.isEmpty ? 'uRunCalc' : data.event,
+            data.event.isEmpty ? AppStrings.appName : data.event,
             style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
           ),
           pw.SizedBox(height: 2),
           pw.Text(
-            'uRunCalc — таблица плана',
+            AppStrings.printPlanTitle,
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
           pw.SizedBox(height: 10),
@@ -100,7 +102,7 @@ Future<Uint8List> buildTablePdf(
           _table(data, columns),
           pw.SizedBox(height: 8),
           pw.Text(
-            'Страница ${pageIndex + 1} из ${chunks.length}',
+            AppStrings.printPage(pageIndex + 1, chunks.length),
             style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
           ),
         ],
@@ -122,14 +124,12 @@ pw.Widget _summary(PrintTableData data) {
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Text(
-          'Общее время: ${data.limitTime}    '
-          'Темп в лимит: ${data.limitPace}',
+          AppStrings.printLimitSummary(data.limitTime, data.limitPace),
           style: const pw.TextStyle(fontSize: 9),
         ),
         pw.SizedBox(height: 3),
         pw.Text(
-          'Итоговый плановый темп: ${data.plannedPace}    '
-          'Итоговое плановое время: ${data.plannedTime}',
+          AppStrings.printPlanSummary(data.plannedPace, data.plannedTime),
           style: const pw.TextStyle(fontSize: 9),
         ),
       ],
@@ -139,13 +139,13 @@ pw.Widget _summary(PrintTableData data) {
 
 pw.Widget _table(PrintTableData data, List<int> columns) {
   final labels = <String>[
-    'Время (лимит)',
-    'Расстояние, км',
-    'Темп сегмента',
-    'План',
-    'Плановый темп',
-    'Вода',
-    'Еда',
+    AppStrings.printTimeLimit,
+    AppStrings.paceRowDistance,
+    AppStrings.paceRowSegmentPace,
+    AppStrings.paceRowPlan,
+    AppStrings.paceRowPlanPace,
+    AppStrings.paceRowWater,
+    AppStrings.paceRowFood,
   ];
 
   final widths = <int, pw.TableColumnWidth>{
