@@ -155,6 +155,13 @@ Finder inPreview(String text) {
   );
 }
 
+Future<void> openColumnsFromSettings(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('pace-settings-columns')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('adds numbers', (tester) async {
     await pumpCalculator(tester);
@@ -568,14 +575,14 @@ void main() {
     await switchMode(tester, 'Ultra');
 
     expect(find.byKey(const ValueKey('pace-event-button')), findsOneWidget);
-    expect(find.byKey(const ValueKey('pace-columns-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pace-settings-button')), findsOneWidget);
     expect(find.byKey(const ValueKey('pace-lock-button')), findsOneWidget);
     expect(find.byKey(const ValueKey('pace-scale-button')), findsNothing);
     expect(
       tester.getSize(find.byKey(const ValueKey('pace-event-button'))).width,
       greaterThan(
         tester
-                .getSize(find.byKey(const ValueKey('pace-columns-button')))
+                .getSize(find.byKey(const ValueKey('pace-settings-button')))
                 .width *
             2,
       ),
@@ -594,8 +601,7 @@ void main() {
     expect(find.byKey(const ValueKey('pace-scale-button')), findsOneWidget);
     expect(find.text('Mad Fox Ultra · VR'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('pace-columns-button')));
-    await tester.pumpAndSettle();
+    await openColumnsFromSettings(tester);
     await tester.tap(find.byKey(const ValueKey('pace-columns-minus')));
     await tester.pump();
     await tester.tap(find.text('Применить'));
@@ -649,8 +655,7 @@ void main() {
     await pumpCalculator(tester);
     await switchMode(tester, 'Ultra');
 
-    await tester.tap(find.byKey(const ValueKey('pace-columns-button')));
-    await tester.pumpAndSettle();
+    await openColumnsFromSettings(tester);
     await tester.tap(find.byKey(const ValueKey('pace-columns-plus')));
     await tester.pump();
     await tester.tap(find.text('Применить'));
@@ -1076,7 +1081,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 30:00'),
+        matching: find.text('Итоговый темп - 30:00'),
       ),
       findsOneWidget,
     );
@@ -1390,7 +1395,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 6:00'),
+        matching: find.text('Итоговый темп - 6:00'),
       ),
       findsOneWidget,
     );
@@ -1398,7 +1403,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 01:00'),
+        matching: find.text('Итоговое время - 01:00'),
       ),
       findsOneWidget,
     );
@@ -1422,14 +1427,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 60:00'),
+        matching: find.text('Итоговый темп - 60:00'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 10:00'),
+        matching: find.text('Итоговое время - 10:00'),
       ),
       findsOneWidget,
     );
@@ -1636,7 +1641,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 6:00'),
+        matching: find.text('Итоговый темп - 6:00'),
       ),
       findsOneWidget,
     );
@@ -1645,7 +1650,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 0:00'),
+        matching: find.text('Итоговый темп - 0:00'),
       ),
       findsOneWidget,
     );
@@ -1898,8 +1903,8 @@ void main() {
 
     expect(find.text('Общее время'), findsNothing);
     expect(find.text('Темп в лимит'), findsNothing);
-    expect(find.text('Итоговый плановый темп'), findsNothing);
-    expect(find.text('Итоговое плановое время'), findsNothing);
+    expect(find.text('Итоговый темп'), findsNothing);
+    expect(find.text('Итоговое время'), findsNothing);
 
     await enterPaceTime(tester, 'pace-table-time-0', '08:00');
     await enterPaceTime(tester, 'pace-table-time-1', '09:00');
@@ -1983,7 +1988,7 @@ void main() {
     // Долгое нажатие по-прежнему показывает пояснение.
     await tester.longPress(find.byKey(const ValueKey('pace-total-plan-pace')));
     await tester.pumpAndSettle();
-    expect(find.text('Итоговый плановый темп'), findsOneWidget);
+    expect(find.text('Итоговый темп'), findsOneWidget);
     await tester.tap(find.text('Закрыть'));
     await tester.pumpAndSettle();
   });
@@ -2219,7 +2224,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-plan-pace-0')),
-        matching: find.text('PACE'),
+        matching: find.text('↓\npace'),
       ),
       findsOneWidget,
     );
@@ -2418,14 +2423,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 10:00'),
+        matching: find.text('Итоговое время - 10:00'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 60:00'),
+        matching: find.text('Итоговый темп - 60:00'),
       ),
       findsOneWidget,
     );
@@ -2476,7 +2481,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 12:00'),
+        matching: find.text('Итоговое время - 12:00'),
       ),
       findsOneWidget,
     );
@@ -2533,14 +2538,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 03:10'),
+        matching: find.text('Итоговое время - 03:10'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan')),
-        matching: find.text('Итоговый плановый темп - 6:20'),
+        matching: find.text('Итоговый темп - 6:20'),
       ),
       findsOneWidget,
     );
@@ -2633,7 +2638,7 @@ void main() {
       paceCellColor(
         tester,
         'pace-overall-plan',
-        'Итоговый плановый темп - 6:00',
+        'Итоговый темп - 6:00',
       ),
       Colors.white,
     );
@@ -2641,7 +2646,7 @@ void main() {
       paceCellColor(
         tester,
         'pace-overall-plan-time',
-        'Итоговое плановое время - 01:00',
+        'Итоговое время - 01:00',
       ),
       Colors.white,
     );
@@ -2731,7 +2736,59 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-overall-plan-time')),
-        matching: find.text('Итоговое плановое время - 01:00'),
+        matching: find.text('Итоговое время - 01:00'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('long press on plan pace opens the stops row', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Горный режим').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pace-stop-1')), findsNothing);
+
+    await tester.longPress(find.byKey(const ValueKey('pace-plan-pace-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pace-stop-1')), findsOneWidget);
+  });
+
+  testWidgets('a stop shifts following plan arrivals', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Горный режим').last);
+    await tester.pumpAndSettle();
+
+    await enterPaceTime(tester, 'pace-table-time-0', '08:00');
+    await enterPaceValue(tester, 'pace-table-distance-1', '10');
+    await enterPaceValue(tester, 'pace-table-distance-2', '10');
+    await enterPaceTime(tester, 'pace-plan-time-0', '08:00');
+    await tester.longPress(find.byKey(const ValueKey('pace-plan-pace-0')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('pace-stop-1')));
+    await tester.pumpAndSettle();
+    for (final key in ['2', '0']) {
+      await tapPaceKey(tester, key);
+    }
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-stop-1')),
+        matching: find.text('20'),
       ),
       findsOneWidget,
     );

@@ -64,6 +64,27 @@ void main() {
   group('plan status', () {
     const limit = ['0500', '0700', '0800'];
 
+    test('marks a plan red when a stop pushes it over the limit', () {
+      // Прибытие 0650 (в лимит), стоянка 20 мин → 0710 > 0700.
+      final statuses = PaceTableCalculator.planStatuses(
+        planTimes: ['0500', '0650', '0800'],
+        limitTimes: limit,
+        columns: 3,
+        stopsMin: [0, 20, 0],
+      );
+      expect(statuses[1], PlanTimeStatus.behindLimit);
+    });
+
+    test('ignores stops when they fit inside the limit', () {
+      final statuses = PaceTableCalculator.planStatuses(
+        planTimes: ['0500', '0650', '0800'],
+        limitTimes: limit,
+        columns: 3,
+        stopsMin: [0, 5, 0],
+      );
+      expect(statuses[1], PlanTimeStatus.closeToLimit);
+    });
+
     test('marks a plan behind the limit', () {
       final statuses = PaceTableCalculator.planStatuses(
         planTimes: ['0500', '0730', '0800'],

@@ -1,3 +1,5 @@
+import 'mountain_data.dart';
+
 /// Источник, из которого посчитаны итоговые плановые показатели.
 enum PacePlannedSummarySource { none, pace, time }
 
@@ -25,6 +27,7 @@ class PaceTableData {
     this.plannedSummarySource = PacePlannedSummarySource.none,
     this.seeded = false,
     List<int> boldColumns = const <int>[],
+    this.mountain = MountainData.empty,
   }) : times = List<String>.unmodifiable(times),
        distances = List<String>.unmodifiable(distances),
        planTimes = List<String>.unmodifiable(planTimes),
@@ -74,6 +77,7 @@ class PaceTableData {
       ),
       seeded: data['seeded'] is bool ? data['seeded'] as bool : false,
       boldColumns: boldColumns,
+      mountain: MountainData.tryFromJson(data['mountain'], columns: columns),
     );
   }
 
@@ -96,6 +100,9 @@ class PaceTableData {
   final bool seeded;
   final List<int> boldColumns;
 
+  /// Горный режим: стоянки, опора плана, треки и ручные высоты.
+  final MountainData mountain;
+
   Map<String, dynamic> toJson() {
     return {
       'columns': columns,
@@ -114,6 +121,7 @@ class PaceTableData {
       'plannedSummarySource': plannedSummarySource.name,
       'seeded': seeded,
       'boldColumns': boldColumns,
+      'mountain': mountain.toJson(),
     };
   }
 

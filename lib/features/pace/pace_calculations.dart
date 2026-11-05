@@ -165,6 +165,7 @@ class PaceTableCalculator {
     required List<String> planTimes,
     required List<String> limitTimes,
     int? columns,
+    List<int>? stopsMin,
   }) {
     final count =
         columns ??
@@ -173,6 +174,15 @@ class PaceTableCalculator {
             : limitTimes.length);
     final plan = elapsedByColumn(planTimes, columns: count);
     final limit = elapsedByColumn(limitTimes, columns: count);
+    // Красный по §7.4: стоянка на ПП выводит план за лимит.
+    bool stopOverLimit(int column) {
+      if (stopsMin == null || column >= stopsMin.length) return false;
+      final stop = stopsMin[column];
+      final limitValue = limit[column];
+      final planValue = plan[column];
+      if (stop <= 0 || limitValue == null || planValue == null) return false;
+      return planValue + stop > limitValue;
+    }
 
     return List<PlanTimeStatus>.generate(count, (column) {
       if (column <= 0) return PlanTimeStatus.normal;
@@ -183,7 +193,9 @@ class PaceTableCalculator {
       }
 
       final delta = planValue - limitValue;
-      if (delta > 0) return PlanTimeStatus.behindLimit;
+      if (delta > 0 || stopOverLimit(column)) {
+        return PlanTimeStatus.behindLimit;
+      }
       if (delta < 0 && -delta < yellowWarningMinutes) {
         return PlanTimeStatus.closeToLimit;
       }

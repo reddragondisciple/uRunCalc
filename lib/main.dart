@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,9 +16,22 @@ import 'core/persisted_json_store.dart';
 import 'core/rational.dart';
 import 'core/time_math.dart';
 import 'features/pace/pace_calculations.dart';
+import 'features/gpx/checkpoint_matching.dart';
+import 'features/gpx/elevation_format.dart';
+import 'features/pace/elevation_cell_text.dart';
+import 'features/gpx/elevation_profile.dart';
+import 'features/gpx/elevation_segments.dart';
+import 'features/gpx/gpx_import.dart';
+import 'features/gpx/parsed_track.dart';
+import 'features/gpx/plan_math.dart';
+import 'features/gpx/track_store.dart';
+import 'features/pace/elevation_chart_view.dart';
 import 'features/pace/pace_catalog.dart';
 import 'features/pace/pace_state_codec.dart';
 import 'features/pace/pace_state_controller.dart';
+import 'features/pace/mountain_data.dart';
+import 'features/pace/pace_gpx_import_ui.dart';
+import 'features/pace/pace_settings_menu.dart';
 import 'features/pace/pace_table_data.dart';
 import 'features/time/time_calculator.dart';
 import 'print_table.dart';

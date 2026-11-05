@@ -34,6 +34,17 @@ class PaceStateController {
   /// Сохранение разрешено только после загрузки состояния.
   bool stateLoaded = false;
 
+  /// Удалённые дистанции `(мероприятие, дистанция)`. Виджет после удаления
+  /// чистит их треки на диске и очищает список.
+  final List<(String, String)> _removedDistances = [];
+
+  /// Забирает список удалённых дистанций, чтобы удалить их треки на диске.
+  List<(String, String)> takeRemovedDistances() {
+    final result = List<(String, String)>.of(_removedDistances);
+    _removedDistances.clear();
+    return result;
+  }
+
   String get eventLabel => '$selectedEvent · $selectedDistance';
 
   PaceDistance? get currentDistance =>
@@ -135,6 +146,7 @@ class PaceStateController {
     if (event.distances.length == before) return false;
 
     _tables.remove(PaceStateCodec.tableKey(event.name, name));
+    _removedDistances.add((event.name, name));
 
     if (selectedEvent == event.name && selectedDistance == name) {
       selectedDistance = event.distances.first.name;

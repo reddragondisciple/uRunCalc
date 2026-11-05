@@ -26,6 +26,7 @@ enum _PaceFocusKind {
   tableDistance,
   tablePlanTime,
   tablePlanPace,
+  tableStop,
   summaryPlannedPace,
   summaryPlannedTime,
 }
@@ -56,6 +57,10 @@ class _PaceFocus {
     : kind = _PaceFocusKind.tablePlanPace,
       field = null;
 
+  const _PaceFocus.tableStop(this.tableColumn)
+    : kind = _PaceFocusKind.tableStop,
+      field = null;
+
   const _PaceFocus.summaryPlannedPace()
     : kind = _PaceFocusKind.summaryPlannedPace,
       field = null,
@@ -72,6 +77,10 @@ class _PaceFocus {
 }
 
 enum _PaceSurface { pace, ultra }
+
+/// Тестовая подмена хранилища треков (in-memory). В продакшене не задаётся.
+@visibleForTesting
+TrackFileStore? debugTrackFileStoreOverride;
 
 class _PaceView extends StatefulWidget {
   const _PaceView({required this.active, required this.surface});
@@ -156,8 +165,258 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   late final PersistedJsonStore _store = PersistedJsonStore(
     storageKey: _storageKey,
     legacyStorageKey: _isUltra ? null : PaceStateCodec.legacyStorageKey,
-    schemaVersion: 2,
+    schemaVersion: 3,
   );
+
+  /// Горный режим текущей таблицы. Хранится в [MountainData] снимка таблицы.
+  bool _mountainEnabled = false;
+
+  /// Глобальный переключатель: показывать темп сегмента с учётом стоянок.
+  bool _showStopsInPace = false;
+
+  /// Треки текущей таблицы. Загружаются вместе с таблицей и сохраняются
+  /// через снимок, поэтому при переключении дистанции не смешиваются.
+  TrackSlots _tracks = TrackSlots.empty;
+
+  /// Опора плана (docs/gpx-mountain-mode.md §7.2). `null` — ещё не задана.
+  PlanAnchor? _planAnchor;
+
+  /// Стоянки по колонкам, сек. Сохраняются в снимок таблицы.
+  List<int> _stopsSec = const <int>[];
+
+  /// Раскрыт ли ряд стоянок (долгое нажатие на PACE). Не сохраняется.
+  bool _stopsRowOpen = false;
+
+  /// Активный слот трека: `primary` или `backup`. Хранится в [TrackSlots].
+  String get _activeTrackSlot => _tracks.active;
+
+  String get _activeTrackSlotLabel => _activeTrackSlot == 'backup'
+      ? AppStrings.paceTrackBackup
+      : AppStrings.paceTrackPrimary;
+
+  /// Переключает горный режим. Данные таблицы не теряются при выключении —
+  /// только скрываются ряды.
+  void _setMountainMode(bool enabled) {
+    _update(() => _mountainEnabled = enabled);
+  }
+
+  void _setStopsInPace(bool enabled) {
+    _update(() => _showStopsInPace = enabled);
+  }
+
+  /// Выбор основного/резервного слота. Сам трек пока не переключается:
+  /// это сделает импорт (следующий шаг).
+  Future<void> _chooseTrackSlot() async {
+    final next = _activeTrackSlot == 'backup' ? 'primary' : 'backup';
+    _update(() => _tracks = _withActive(_tracks, next));
+    unawaited(_ensureTrackLoaded());
+  }
+
+  /// Загрузка GPX: слот → файл → разбор → старт → режим → применение.
+  Future<void> _importGpxFlow() async {
+    _hideKeyboard();
+    if (_locked) {
+      final unlock = await confirmUnlockForImport(context);
+      if (!unlock || !mounted) return;
+      _applyLocks(all: false);
+    }
+
+    final slot = await _pickTrackSlot();
+    if (slot == null || !mounted) return;
+
+    final existing = slot == 'backup' ? _tracks.backup : _tracks.primary;
+    if (existing != null) {
+      final replace = await confirmTrackOverwrite(context);
+      if (!replace || !mounted) return;
+    }
+
+    final files = _trackFiles;
+    if (files == null) {
+      _showMessage(AppStrings.paceTrackReadError);
+      return;
+    }
+
+    final picked = await TrackFilePicker.pick();
+    if (picked == null || !mounted) return;
+
+    final parsed = parseTrackFile(picked);
+    if (parsed.parsed == null) {
+      _showMessage('${AppStrings.paceTrackParseErrorPrefix}${parsed.error}');
+      return;
+    }
+    var track = parsed.parsed!;
+
+    // Трек начинается далеко от точки Start: спрашиваем, что считать стартом.
+    final startOffset = trackStartOffsetMeters(track.track);
+    if (startOffset != null && startNeedsDecision(startOffset)) {
+      final choice = await askTrackStart(context);
+      if (choice == null || !mounted) return;
+      if (choice == TrackStartChoice.nearestPoint) {
+        track = track.measuredFromStart();
+      }
+    }
+
+    final mode = await showImportModeDialog(context);
+    if (mode == null || !mounted) return;
+
+    final columns = _tableDistances.length;
+    final labels = _checkpointLabels(columns);
+    final currentKm = [
+      for (final value in _tableDistances) parseDecimal(value) ?? 0,
+    ];
+
+    var choices = <ColumnChoice>[];
+    if (mode == GpxImportMode.checkpoints) {
+      final suggestions = suggestColumns(
+        columnLabels: labels,
+        columnDistancesM: [for (final km in currentKm) km * 1000],
+        candidates: candidatesFromStart(track),
+        trackLengthM: track.lengthKm * 1000,
+      );
+      final picks = await showCheckpointCompareDialog(
+        context,
+        labels: [for (final l in labels) _labelText(l)],
+        currentKm: currentKm,
+        suggestions: suggestions,
+      );
+      if (picks == null || !mounted) return;
+      choices = picks;
+    }
+
+    final result = applyGpxImport(
+      mode: mode,
+      distances: List<String>.of(_tableDistances),
+      notes: List<String>.of(_notes),
+      finishKm: track.lengthKm,
+      choices: choices,
+    );
+    if (!result.ok) {
+      _showMessage(importErrorText(result.error!));
+      return;
+    }
+
+    // Сначала файл, потом метаданные: при сбое записи таблица не меняется.
+    final fileName = slot == 'backup' ? 'backup.gpx' : 'primary.gpx';
+    final key = trackDistanceKey(
+      _controller.selectedEvent,
+      _controller.selectedDistance,
+    );
+    try {
+      await files.write(
+        distanceKey: key,
+        fileName: fileName,
+        content: picked.content,
+      );
+    } catch (error) {
+      debugPrint('uRunCalc: не удалось сохранить трек: $error');
+      _showMessage(AppStrings.paceTrackReadError);
+      return;
+    }
+    if (!mounted) return;
+
+    final meta = TrackMeta(
+      relativePath: fileName,
+      originalName: picked.name,
+      importedAtMs: DateTime.now().millisecondsSinceEpoch,
+      points: track.track.length,
+      lengthM: track.metrics.totalDistance2d,
+      ascentM: track.totalAscentM,
+      descentM: track.totalDescentM,
+      hasElevation: track.track.hasElevation,
+      offsetM: track.startOffsetM,
+    );
+    // Таблица и метаданные трека меняются одним шагом, чтобы сохранение
+    // не зафиксировало половину изменений.
+    _update(() {
+      for (final index in result.changedColumns) {
+        _tableDistances[index] = result.distances[index];
+      }
+      for (var i = 0; i < _notes.length && i < result.notes.length; i++) {
+        _notes[i] = result.notes[i];
+      }
+      _mountainEnabled = true;
+      _tracks = _withTrackMeta(_tracks, slot, meta);
+    });
+    _loadedTrack = null;
+    _loadedTrackKey = null;
+    unawaited(_ensureTrackLoaded());
+    _showMessage(AppStrings.paceTrackImportApplied);
+  }
+
+  TrackSlots _withActive(TrackSlots current, String active) {
+    return TrackSlots(
+      active: active,
+      primary: current.primary,
+      backup: current.backup,
+    );
+  }
+
+  TrackSlots _withTrackMeta(TrackSlots current, String slot, TrackMeta meta) {
+    return TrackSlots(
+      active: slot,
+      primary: slot == 'primary' ? meta : current.primary,
+      backup: slot == 'backup' ? meta : current.backup,
+    );
+  }
+
+  /// Метки колонок для сопоставления: старт, промежуточные ПП, финиш.
+  List<String> _checkpointLabels(int columns) {
+    return [
+      for (var i = 0; i < columns; i++)
+        if (i == 0) 'START' else if (i == columns - 1) 'FINISH' else 'CP$i',
+    ];
+  }
+
+  String _labelText(String label) {
+    if (label == 'START') return AppStrings.paceTrackStartLabel;
+    if (label == 'FINISH') return AppStrings.paceTrackFinishLabel;
+    return label;
+  }
+
+  /// Выбор слота загрузки. Возвращает `primary`, `backup` или `null`.
+  Future<String?> _pickTrackSlot() {
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return SimpleDialog(
+          title: const Text(AppStrings.paceTrackImportTitle),
+          children: [
+            SimpleDialogOption(
+              key: const ValueKey('gpx-slot-primary'),
+              onPressed: () => Navigator.pop(dialogContext, 'primary'),
+              child: const Text(AppStrings.paceTrackPrimary),
+            ),
+            SimpleDialogOption(
+              key: const ValueKey('gpx-slot-backup'),
+              onPressed: () => Navigator.pop(dialogContext, 'backup'),
+              child: const Text(AppStrings.paceTrackBackup),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _manualElevationFlow() async {}
+
+  /// Файлы GPX-треков. Появляется после того, как `path_provider` вернёт
+  /// каталог поддержки; до этого операции с треками недоступны.
+  TrackFileStore? _trackFiles;
+
+  Future<void> _initTrackFiles() async {
+    final override = debugTrackFileStoreOverride;
+    if (override != null) {
+      _trackFiles = override;
+    } else {
+      final support = await getApplicationSupportDirectory();
+      if (!mounted) return;
+      _trackFiles = DirectoryTrackFileStore(
+        Directory('${support.path}${Platform.pathSeparator}tracks'),
+      );
+    }
+    // Загрузка трека могла стартовать раньше, чем появилось хранилище.
+    unawaited(_ensureTrackLoaded());
+  }
 
   bool get _isUltra => widget.surface == _PaceSurface.ultra;
 
@@ -170,6 +429,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _resetTable(_columns);
     _loadPaceState();
+    unawaited(_initTrackFiles());
   }
 
   /// Единая точка изменения состояния: перерисовывает экран и планирует
@@ -313,6 +573,22 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       plannedSummarySource: _plannedSummarySource,
       seeded: _seeded,
       boldColumns: List<int>.of(_boldColumns),
+      mountain: _currentTableMountain(),
+    );
+  }
+
+  /// Горные данные текущей таблицы. Треки и ручные высоты пока не редактируются
+  /// экраном, поэтому переносим сохранённые, чтобы правка таблицы их не стирала.
+  MountainData _currentTableMountain() {
+    final saved = _controller.currentTable?.mountain ?? MountainData.empty;
+    return MountainData(
+      enabled: _mountainEnabled,
+      stopsSec: _stopsSec,
+      anchor: _planAnchor,
+      tracks: _tracks,
+      manualAscent: saved.manualAscent,
+      manualDescent: saved.manualDescent,
+      showStopsInPace: _showStopsInPace,
     );
   }
 
@@ -320,6 +596,8 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
 
   void _loadCurrentTable() {
     _boldColumns.clear();
+    _loadedTrack = null;
+    _loadedTrackKey = null;
     final data = _controller.currentTable;
     if (data == null) {
       final distance = _controller.currentDistance;
@@ -332,10 +610,16 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     }
 
     _applyTableData(data);
+    unawaited(_ensureTrackLoaded());
   }
 
   /// Раскладывает снимок таблицы по полям ввода.
   void _applyTableData(PaceTableData data) {
+    _mountainEnabled = data.mountain.enabled;
+    _showStopsInPace = data.mountain.showStopsInPace;
+    _tracks = data.mountain.tracks;
+    _planAnchor = data.mountain.anchor;
+    _stopsSec = data.mountain.stopsSec;
     _columns = data.columns.clamp(3, _maxColumns);
     _boldColumns.addAll(
       data.boldColumns.where((index) => index >= 0 && index < _columns),
@@ -375,6 +659,11 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   }
 
   void _resetTable(int columns, [PaceDistance? distance]) {
+    _mountainEnabled = false;
+    _showStopsInPace = false;
+    _tracks = TrackSlots.empty;
+    _planAnchor = null;
+    _stopsSec = const <int>[];
     final clamped = columns.clamp(3, _maxColumns).toInt();
     _columns = clamped;
     _fitTable = true;
@@ -957,6 +1246,86 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     _finishInput();
   }
 
+  /// Диалог «плоские / с поправкой» (§7.3). Нужен только при горном режиме
+  /// и загруженном треке с высотами; иначе возвращает `null` — ввод идёт
+  /// по-старому.
+  Future<PlanInputChoice?> _askPlanInputMode({
+    required bool byTime,
+    required double value,
+  }) async {
+    if (!_mountainEnabled) return null;
+    final parsed = _loadedTrack;
+    if (parsed == null || !parsed.track.hasElevation) return null;
+    final segments = _planSegments();
+    if (segments.isEmpty) return null;
+    return showPlanInputDialog(
+      context,
+      previewFor: (mode, stopsMin) {
+        final preview = _previewPlanInput(
+          mode: mode,
+          byTime: byTime,
+          value: value,
+          stopsMin: stopsMin,
+        );
+        return preview ?? AppStrings.paceInputPreviewUnavailable;
+      },
+    );
+  }
+
+  List<PlanSegment> _planSegments() => planSegmentsForColumns(
+    parsed: _loadedTrack,
+    columnDistancesKm: [
+      for (final value in _tableDistances) parseDecimal(value) ?? 0,
+    ],
+  );
+
+  /// Текст предпросмотра «Плоский 6:00 → расчётный 6:38, итог 12:34 (со
+  /// стоянками 45 мин)». Стоянки — суммарные минуты, распределяются по ПП.
+  String? _previewPlanInput({
+    required PlanInputMode mode,
+    required bool byTime,
+    required double value,
+    required int stopsMin,
+  }) {
+    final segments = _planSegments();
+    final totalStopsSec = stopsMin * 60.0;
+    final stops = distributeStops(
+      columns: _columns,
+      totalSec: totalStopsSec,
+      current: _stopsSecList(),
+    );
+    final r = planFromInput(
+      mode: mode,
+      byTime: byTime,
+      value: value,
+      segments: segments,
+      stopsSec: stops,
+      totalStopsSec: totalStopsSec,
+    );
+    if (r == null) return null;
+    final p = r.preview;
+    final total = p.totalSec == null ? '' : _hmText(p.totalSec!.round());
+    final moving = p.movingPaceSec == null
+        ? ''
+        : formatPaceSeconds(p.movingPaceSec!.round());
+    if (mode == PlanInputMode.flatData && p.flatPaceSec != null) {
+      return '${AppStrings.paceInputPreviewFlat} '
+          '${formatPaceSeconds(p.flatPaceSec!.round())} → '
+          '${AppStrings.paceInputPreviewCalc} $moving, '
+          '${AppStrings.paceInputPreviewTotal} $total '
+          '(${AppStrings.paceInputPreviewStops} $stopsMin ${AppStrings.paceInputMinutesShort})';
+    }
+    return '${AppStrings.paceInputPreviewCalc} $moving, '
+        '${AppStrings.paceInputPreviewTotal} $total '
+        '(${AppStrings.paceInputPreviewStops} $stopsMin ${AppStrings.paceInputMinutesShort})';
+  }
+
+  String _hmText(int seconds) {
+    final parts = splitSeconds(seconds);
+    final h = parts.days * 24 + parts.hours;
+    return '$h:${parts.minutes.toString().padLeft(2, '0')}';
+  }
+
   Future<bool> _confirmAndApplyPlannedTime() async {
     final duration = _parseTimeBuffer(_plannedTimeOverride);
     final distance = _totalTableDistance;
@@ -982,12 +1351,20 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     );
     if (!confirmed) return false;
 
+    final choice = await _askPlanInputMode(
+      byTime: true,
+      value: duration * 60.0,
+    );
+    if (!mounted) return false;
+
     _update(() {
       if (!planStartFilled) _planTimes[0] = _tableTimes[0];
       final paceSeconds = (duration * 60 / distance).round();
       _applyPlanSchedule(paceSeconds, totalMinutes: duration);
+      _setFlatAnchorFromTime(duration * 60.0);
       _resetPlannedSummary();
     });
+    _applyPlanChoice(choice, byTime: true, value: duration * 60.0);
     return true;
   }
 
@@ -1016,11 +1393,19 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     );
     if (!confirmed) return false;
 
+    final choice = await _askPlanInputMode(
+      byTime: false,
+      value: pace.toDouble(),
+    );
+    if (!mounted) return false;
+
     _update(() {
       if (!planStartFilled) _planTimes[0] = _tableTimes[0];
       _applyPlanSchedule(pace);
+      _setFlatAnchor(pace.toDouble());
       _resetPlannedSummary();
     });
+    _applyPlanChoice(choice, byTime: false, value: pace.toDouble());
     return true;
   }
 
@@ -1102,8 +1487,10 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   void _finishInput() {
     _replacePlanInput = false;
     final planChanged = _finalizePlanEdit();
+    final distancesChanged = _recomputeMountainPlan();
     _commitDays();
     if (!planChanged &&
+        !distancesChanged &&
         !_keyboardVisible &&
         _focus.kind == _PaceFocusKind.none) {
       return;
@@ -1228,6 +1615,170 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     });
   }
 
+  /// Применяет выбор диалога: опора по режиму, стоянки — суммарные минуты,
+  /// распределённые по ПП. Без выбора (`null`) ничего не меняет.
+  void _applyPlanChoice(
+    PlanInputChoice? choice, {
+    required bool byTime,
+    required double value,
+  }) {
+    if (choice == null) return;
+    final totalStopsSec = choice.stopsMin * 60.0;
+    final stops = distributeStops(
+      columns: _columns,
+      totalSec: totalStopsSec,
+      current: _stopsSecList(),
+    );
+    final r = planFromInput(
+      mode: choice.mode,
+      byTime: byTime,
+      value: value,
+      segments: _planSegments(),
+      stopsSec: stops,
+      totalStopsSec: totalStopsSec,
+    );
+    if (r == null) return;
+    _update(() {
+      _planAnchor = _toPlanAnchor(r.anchor);
+      _setStopsSecList(stops);
+      _recomputeMountainPlan();
+    });
+  }
+
+  PlanAnchor _toPlanAnchor(PlanInputAnchor a) => switch (a.mode) {
+    PlanAnchorMode.flat => PlanAnchor.flat(a.value),
+    PlanAnchorMode.targetTime => PlanAnchor.targetTime(a.value.round()),
+    PlanAnchorMode.targetPace => PlanAnchor.targetPace(a.value),
+    PlanAnchorMode.manual => const PlanAnchor.manual(),
+  };
+
+  /// Опора «плоский темп» — только при включённом горном режиме: без него
+  /// план считается как раньше и опора не нужна.
+  void _setFlatAnchor(double paceSec) {
+    if (!_mountainEnabled || paceSec <= 0) return;
+    _planAnchor = PlanAnchor.flat(paceSec);
+  }
+
+  /// Итог по времени «плоские данные»: `p0 = (T − стоянки) / D` (§7.3).
+  /// Стоянок в UI пока нет, поэтому учитываем сохранённые.
+  void _setFlatAnchorFromTime(double totalSec) {
+    if (!_mountainEnabled) return;
+    final distance = _totalTableDistance;
+    if (distance == null || distance <= 0) return;
+    final stops = _stopsSecList();
+    final moving = totalSec - sumIntermediateStops(stops, _columns);
+    if (moving <= 0) return;
+    _setFlatAnchor(moving / distance);
+  }
+
+  /// Пересчёт плана по опоре при изменении дистанций (§7.5). Работает только
+  /// в горном режиме и при заданной опоре; иначе план не трогаем.
+  /// Возвращает true, если план изменился.
+  bool _recomputeMountainPlan() {
+    final anchor = _planAnchor;
+    if (!_mountainEnabled || anchor == null) return false;
+    if (anchor.kind == PlanAnchorKind.manual) return false;
+    final segments = planSegmentsForColumns(
+      parsed: _loadedTrack,
+      columnDistancesKm: [
+        for (final value in _tableDistances) parseDecimal(value) ?? 0,
+      ],
+    );
+    if (segments.isEmpty) return false;
+    final start =
+        _parseTimeBuffer(_planTimes[0]) ?? _parseTimeBuffer(_tableTimes[0]);
+    if (start == null) return false;
+
+    final plan = recomputePlan(
+      anchor: switch (anchor.kind) {
+        PlanAnchorKind.flat => PlanAnchorMode.flat,
+        PlanAnchorKind.targetTime => PlanAnchorMode.targetTime,
+        PlanAnchorKind.targetPace => PlanAnchorMode.targetPace,
+        PlanAnchorKind.manual => PlanAnchorMode.manual,
+      },
+      segments: segments,
+      stopsSec: _stopsSecList(),
+      flatPaceSec: anchor.flatPaceSec,
+      targetTotalSec: anchor.targetTotalSec?.toDouble(),
+      targetPaceSec: anchor.targetPaceSec,
+    );
+    if (plan == null) return false;
+
+    for (var index = 1; index < _columns; index++) {
+      final pace = plan.paceSec[index];
+      _planPaces[index] = pace > 0 ? _paceBufferFromSeconds(pace.round()) : '';
+      _planTimes[index] = _timeBufferFromMinutes(
+        start + (plan.arrivalSec[index] / 60).round(),
+      );
+    }
+    _planDays = _computeDays(_planTimes);
+    return true;
+  }
+
+  /// Ручная правка сегмента переводит опору в `manual` (§7.2).
+  void _markManualAnchor() {
+    if (!_mountainEnabled) return;
+    _planAnchor = const PlanAnchor.manual();
+  }
+
+  List<double> _stopsSecList() {
+    return [
+      for (var i = 0; i < _columns; i++)
+        i < _stopsSec.length ? _stopsSec[i].toDouble() : 0,
+    ];
+  }
+
+  void _setStopsSecList(List<double> stops) {
+    _stopsSec = [for (final value in stops) value.round()];
+  }
+
+  /// Минуты стоянки на колонке (целые, внутренне — секунды). Пусто = 0.
+  int _stopMinutes(int column) {
+    if (column <= 0 || column >= _stopsSec.length) return 0;
+    return _stopsSec[column] ~/ 60;
+  }
+
+  String _stopBufferText(int column) {
+    final minutes = _stopMinutes(column);
+    return minutes == 0 ? '' : minutes.toString();
+  }
+
+  /// Ввод стоянки: только цифры, до 3 знаков (минуты). Колонка 0 и финиш —
+  /// без стоянок (см. `sumIntermediateStops`).
+  void _appendStop(int column, String char) {
+    if (column <= 0 || column >= _columns - 1) return;
+    if (!_isDigitChar(char)) return;
+    final current = _stopBufferText(column);
+    if (current.length >= 3) return;
+    final next = current == '0' ? char : '$current$char';
+    _update(() => _setStopMinutes(column, int.parse(next)));
+  }
+
+  void _removeStopDigit(int column) {
+    if (column <= 0 || column >= _columns - 1) return;
+    final current = _stopBufferText(column);
+    final rest = current.length <= 1 ? '' : current.substring(0, current.length - 1);
+    _update(() => _setStopMinutes(column, rest.isEmpty ? 0 : int.parse(rest)));
+  }
+
+  /// Записывает стоянку колонки и сдвигает прибытия последующих колонок
+  /// (дельта, §7.4). Темпы сегментов не меняются.
+  void _setStopMinutes(int column, int minutes) {
+    if (column <= 0 || column >= _columns - 1) return;
+    final before = _stopsSec.length > column ? _stopsSec[column] : 0;
+    final stops = _stopsSecList();
+    stops[column] = minutes * 60.0;
+    _setStopsSecList(stops);
+    final deltaMin = (stops[column] - before) ~/ 60;
+    if (deltaMin == 0) return;
+    for (var index = column + 1; index < _columns; index++) {
+      final time = _parseTimeBuffer(_planTimes[index]);
+      if (time == null) continue;
+      _planTimes[index] = _timeBufferFromMinutes(time + deltaMin);
+    }
+    _planDays = _computeDays(_planTimes);
+  }
+
   void _applyPlanPace(int column) {
     if (column <= 0) return;
 
@@ -1255,6 +1806,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       }
       _planPaces[column] = _appendPaceBuffer(_planPaces[column], char);
       _applyPlanPace(column);
+      _markManualAnchor();
       _resetPlannedSummary();
     });
   }
@@ -1328,6 +1880,8 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         _appendPlanTime(_focus.tableColumn, char);
       case _PaceFocusKind.tablePlanPace:
         _appendPlanPace(_focus.tableColumn, char);
+      case _PaceFocusKind.tableStop:
+        _appendStop(_focus.tableColumn, char);
       case _PaceFocusKind.summaryPlannedPace:
         _update(() {
           if (_replacePlanInput) {
@@ -1390,7 +1944,10 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
           final column = _focus.tableColumn;
           _planPaces[column] = _removeLast(_planPaces[column]);
           _applyPlanPace(column);
+          _markManualAnchor();
           _resetPlannedSummary();
+        case _PaceFocusKind.tableStop:
+          _removeStopDigit(_focus.tableColumn);
         case _PaceFocusKind.summaryPlannedPace:
           _plannedPaceOverride = _removeLast(_plannedPaceOverride);
           _plannedSummarySource = PacePlannedSummarySource.pace;
@@ -1437,6 +1994,8 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
           _planPaces[column] = '';
           if (column > 0) _planTimes[column] = '';
           _resetPlannedSummary();
+        case _PaceFocusKind.tableStop:
+          _setStopMinutes(_focus.tableColumn, 0);
         case _PaceFocusKind.summaryPlannedPace:
           _plannedPaceOverride = '';
           _plannedSummarySource = PacePlannedSummarySource.none;
@@ -1839,6 +2398,43 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       _controller.removeDistance(event, result);
       if (wasSelected) _loadCurrentTable();
     });
+    await _deleteRemovedTracks();
+  }
+
+  /// Удаляет каталоги треков удалённых дистанций. Ошибки файловой системы
+  /// не блокируют интерфейс: трек просто останется до следующей очистки.
+  Future<void> _deleteRemovedTracks() async {
+    final files = _trackFiles;
+    for (final (event, distance) in _controller.takeRemovedDistances()) {
+      if (files == null) continue;
+      try {
+        await files.deleteDistance(trackDistanceKey(event, distance));
+      } catch (error) {
+        debugPrint(
+          'uRunCalc: не удалось удалить трек $event/$distance: $error',
+        );
+      }
+    }
+  }
+
+  /// Меню-шестерёнка: колонки, горный режим, треки, стоянки.
+  Future<void> _showSettingsMenu() async {
+    await PaceSettingsMenu.show(
+      context,
+      state: PaceSettingsState(
+        mountainMode: _mountainEnabled,
+        showStopsInPace: _showStopsInPace,
+        activeSlotLabel: _activeTrackSlotLabel,
+      ),
+      actions: PaceSettingsActions(
+        onColumns: _showColumnsDialog,
+        onMountainChanged: _setMountainMode,
+        onImportGpx: _importGpxFlow,
+        onTrackSlot: _chooseTrackSlot,
+        onManualElevation: _manualElevationFlow,
+        onStopsModeChanged: _setStopsInPace,
+      ),
+    );
   }
 
   Future<void> _showColumnsDialog() async {
@@ -1926,15 +2522,14 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         Expanded(
           flex: 2,
           child: _toolbarButton(
-            key: 'pace-columns-button',
-            label: '+−',
-            semanticLabel: AppStrings.paceColumnsSemantic,
-            icon: Icons.view_column_outlined,
+            key: 'pace-settings-button',
+            semanticLabel: AppStrings.paceSettingsSemantic,
+            icon: Icons.settings_outlined,
             onTap: _locked
                 ? null
                 : () {
                     _hideKeyboard();
-                    _showColumnsDialog();
+                    _showSettingsMenu();
                   },
           ),
         ),
@@ -2647,26 +3242,40 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       planTimes: _planTimes,
       limitTimes: _tableTimes,
       columns: _columns,
+      stopsMin: [for (var i = 0; i < _columns; i++) _stopMinutes(i)],
     );
     return LayoutBuilder(
       builder: (context, constraints) {
         final gap = compact ? 2.0 : 5.0;
 
+        // Ряд высот (горный режим) вставляется после «Расстояния» в обоих
+        // режимах, поэтому подписи и высоты строятся от одного списка рядов.
+        final elevationOn = _mountainEnabled;
+        // Ряд стоянок раскрывается строкой под «Плановым темпом» (§7.4).
+        final stopsOn = _stopsRowOpen ? 1 : 0;
         final compactLabels = <String>[
           '',
           AppStrings.paceRowLimit,
           AppStrings.paceRowDistance,
+          if (elevationOn) AppStrings.paceRowElevation,
           AppStrings.paceRowSegmentPace,
           AppStrings.paceRowPlan,
           AppStrings.paceRowPlanPace,
+          if (stopsOn == 1) AppStrings.paceRowStops,
           AppStrings.paceRowWater,
           AppStrings.paceRowFood,
         ];
+        // Подписи портрета по рядам. Ряд высот — отдельная подпись только
+        // в горном режиме; «План» стоит на своём ряду в любом режиме.
+        // Порядок рядов портрета: заголовок, время, расстояние, [подъём и его
+        // итог], сегментный темп, лимит, план (время), плановый темп, итоги
+        // плана, вода, еда.
         final portraitLabels = <String>[
           '',
           '',
           '',
           '',
+          if (elevationOn) ...['', ''],
           '',
           AppStrings.paceRowPlan,
           '',
@@ -2679,7 +3288,20 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
 
         late List<double> heights;
         if (compact) {
-          const weights = <double>[1.3, 1.3, 1.3, 1.3, 1.3, 1.3, 2.1, 2.1];
+          // Горный режим: ряд высот вставлен после «Расстояния», а «Вода» и
+          // «Еда» уступают ему место поровну.
+          final weights = <double>[
+            1.3,
+            1.3,
+            1.3,
+            if (elevationOn) 1.3,
+            1.3,
+            1.3,
+            1.3,
+            if (stopsOn == 1) 1.3,
+            elevationOn ? 1.6 : 2.1,
+            elevationOn ? 1.6 : 2.1,
+          ];
           final totalWeight = weights.fold<double>(0, (sum, w) => sum + w);
           final available = constraints.maxHeight.isFinite
               ? math.max(
@@ -2692,7 +3314,21 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         } else {
           // Ряд заметок в два раза выше остальных, чтобы в нём помещался
           // крупный номер ПП и текст заметки. Вода и еда — максимально высокие.
-          heights = <double>[60, 30, 30, 30, 30, 30, 30, 30, 30, 110, 110];
+          // Горный режим добавляет ряд подъёма и ряд его итога (2 ряда).
+          heights = <double>[
+            60, // заголовок
+            30, // время
+            30, // расстояние
+            30, // сегментный темп
+            if (elevationOn) ...[30, 30],
+            30, // лимит: общее время / темп
+            30, // план: время
+            30, // план: темп
+            if (stopsOn == 1) 30, // стоянки
+            30, // итоги плана: темп | время
+            110, // вода
+            110, // еда
+          ];
         }
 
         final rows = <Widget>[];
@@ -2728,10 +3364,22 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
               total: _totalBlankCell(),
             ),
           );
+          var next = 3;
+          if (elevationOn) {
+            rows.add(
+              _tableRow(
+                cells: _elevationCells(),
+                height: heights[next],
+                expanded: _fitTable,
+                total: _elevationTotalCell(),
+              ),
+            );
+            next++;
+          }
           rows.add(
             _tableRow(
               cells: _segmentPaceCells(),
-              height: heights[3],
+              height: heights[next],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-pace',
@@ -2748,7 +3396,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
           rows.add(
             _tableRow(
               cells: _planTimeCells(),
-              height: heights[4],
+              height: heights[next + 1],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-time',
@@ -2770,7 +3418,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
           rows.add(
             _tableRow(
               cells: _planPaceCells(),
-              height: heights[5],
+              height: heights[next + 2],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-pace',
@@ -2791,12 +3439,26 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
               ),
             ),
           );
+          if (_stopsRowOpen) {
+            rows.add(
+              _tableRow(
+                cells: _stopsCells(compact: true),
+                height: heights[next + 3],
+                expanded: _fitTable,
+                total: _totalValueCell(
+                  key: 'pace-total-stops',
+                  text: _formatStopsTotal(),
+                  color: Colors.white,
+                ),
+              ),
+            );
+          }
           rows.add(
             _wrappedTextRow(
               values: _water,
               keyPrefix: 'pace-water',
               title: AppStrings.paceRowWater,
-              height: heights[6],
+              height: heights[next + 3 + stopsOn],
               expanded: _fitTable,
               showFirstPlaceholder: false,
               total: _totalBlankCell(),
@@ -2807,13 +3469,15 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
               values: _food,
               keyPrefix: 'pace-food',
               title: AppStrings.paceRowFood,
-              height: heights[7],
+              height: heights[next + 4 + stopsOn],
               expanded: _fitTable,
               showFirstPlaceholder: false,
               total: _totalBlankCell(),
             ),
           );
         } else {
+          // Смещение рядов портрета: горный режим добавляет ряд высот и его итог.
+          final pe = elevationOn ? 2 : 0;
           rows.add(
             _tableRow(
               cells: _headerCells(false),
@@ -2842,37 +3506,63 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
               expanded: _fitTable,
             ),
           );
+          if (_mountainEnabled) {
+            rows.add(
+              _tableRow(
+                cells: _elevationCells(),
+                height: _elevationRowHeight,
+                expanded: _fitTable,
+              ),
+            );
+            rows.add(
+              _elevationTotalRow(
+                height: _elevationRowHeight,
+                expanded: _fitTable,
+                meters: true,
+              ),
+            );
+          }
           rows.add(
-            _limitSummarySplitRow(height: heights[4], expanded: _fitTable),
+            _limitSummarySplitRow(height: heights[4 + pe], expanded: _fitTable),
           );
           rows.add(
             _tableRow(
               cells: _planTimeCells(),
-              height: heights[5],
+              height: heights[5 + pe],
               expanded: _fitTable,
             ),
           );
           rows.add(
             _tableRow(
               cells: _planPaceCells(),
-              height: heights[6],
+              height: heights[6 + pe],
               expanded: _fitTable,
             ),
           );
+          if (_stopsRowOpen) {
+            rows.add(
+              _tableRow(
+                cells: _stopsCells(),
+                height: heights[7 + pe],
+                expanded: _fitTable,
+              ),
+            );
+          }
           rows.add(
-            _plannedPaceSummaryRow(height: heights[7], expanded: _fitTable),
-          );
-          rows.add(
-            _plannedTimeSummaryRow(height: heights[8], expanded: _fitTable),
+            _plannedSummaryPairRow(
+              height: heights[7 + pe + stopsOn],
+              expanded: _fitTable,
+            ),
           );
           rows.add(
             _wrappedTextRow(
               values: _water,
               keyPrefix: 'pace-water',
               title: AppStrings.paceRowWater,
-              height: heights[9],
+              height: heights[8 + pe + stopsOn],
               expanded: _fitTable,
               showFirstPlaceholder: true,
+              fontSize: 10.5,
             ),
           );
           rows.add(
@@ -2880,9 +3570,10 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
               values: _food,
               keyPrefix: 'pace-food',
               title: AppStrings.paceRowFood,
-              height: heights[10],
+              height: heights[9 + pe + stopsOn],
               expanded: _fitTable,
               showFirstPlaceholder: true,
+              fontSize: 10.5,
             ),
           );
         }
@@ -2959,7 +3650,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
             children: [
               for (var index = 0; index < rows.length; index++) ...[
                 if (index > 0) SizedBox(height: gap),
-                if (labels[index].isNotEmpty) ...[
+                if (index < labels.length && labels[index].isNotEmpty) ...[
                   Text(
                     labels[index],
                     style: const TextStyle(color: Colors.grey, fontSize: 10),
@@ -3112,10 +3803,8 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         : SizedBox(width: _columns * _fixedCellWidth, child: row);
   }
 
-  Widget _plannedPaceSummaryRow({
-    required double height,
-    required bool expanded,
-  }) {
+  /// Ячейка итогового планового темпа (без строки, для общего ряда портрета).
+  Widget _plannedPaceSummaryCell() {
     final focused = _focus.kind == _PaceFocusKind.summaryPlannedPace;
     final seconds = _overallPlannedPaceSeconds;
     final cell = _interactiveCell(
@@ -3135,19 +3824,11 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       color: Colors.white,
       onTap: _locked ? null : () => _focusSummaryPlannedPace(),
     );
-
-    return expanded
-        ? SizedBox(height: height, child: cell)
-        : SizedBox(
-            width: _columns * _fixedCellWidth,
-            child: SizedBox(height: height, child: cell),
-          );
+    return cell;
   }
 
-  Widget _plannedTimeSummaryRow({
-    required double height,
-    required bool expanded,
-  }) {
+  /// Ячейка итогового планового времени (для общего ряда портрета).
+  Widget _plannedTimeSummaryCell() {
     final focused = _focus.kind == _PaceFocusKind.summaryPlannedTime;
     final cell = _interactiveCell(
       key: 'pace-overall-plan-time',
@@ -3166,13 +3847,23 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       color: Colors.white,
       onTap: _locked ? null : () => _focusSummaryPlannedTime(),
     );
+    return cell;
+  }
 
+  /// Итоги плана одной строкой в портрете: темп и время делят ширину пополам.
+  Widget _plannedSummaryPairRow({required double height, required bool expanded}) {
+    final row = SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          Expanded(child: _plannedTimeSummaryCell()),
+          Expanded(child: _plannedPaceSummaryCell()),
+        ],
+      ),
+    );
     return expanded
-        ? SizedBox(height: height, child: cell)
-        : SizedBox(
-            width: _columns * _fixedCellWidth,
-            child: SizedBox(height: height, child: cell),
-          );
+        ? row
+        : SizedBox(width: _columns * _fixedCellWidth, child: row);
   }
 
   List<Widget> _headerCells(bool compact) {
@@ -3405,6 +4096,201 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     });
   }
 
+  /// Разобранный трек активного слота текущей дистанции. Читается с диска
+  /// один раз и кэшируется; сбрасывается при смене дистанции или слота.
+  ParsedTrack? _loadedTrack;
+  String? _loadedTrackKey;
+  bool _loadingTrack = false;
+
+  /// D+/D− по сегментам текущей таблицы. `null`, если трека нет или он не
+  /// загружен; тогда ряд показывает прочерк.
+  ElevationSegments? get _elevationSegments {
+    final parsed = _loadedTrack;
+    if (parsed == null) return null;
+    return elevationForColumns(
+      parsed: parsed,
+      columnDistancesKm: [
+        for (final value in _tableDistances) parseDecimal(value) ?? 0,
+      ],
+    );
+  }
+
+  /// Читает активный трек с диска. Ошибки не роняют экран: ряд просто пуст.
+  Future<void> _ensureTrackLoaded() async {
+    final files = _trackFiles;
+    final meta = _tracks.activeTrack;
+    final key =
+        '${trackDistanceKey(_controller.selectedEvent, _controller.selectedDistance)}'
+        '/${_tracks.active}';
+    if (files == null || meta == null || !_mountainEnabled) return;
+    if (_loadedTrackKey == key && _loadedTrack != null) return;
+    if (_loadingTrack) return;
+
+    _loadingTrack = true;
+    try {
+      final content = await files.read(
+        distanceKey: trackDistanceKey(
+          _controller.selectedEvent,
+          _controller.selectedDistance,
+        ),
+        fileName: meta.relativePath,
+      );
+      if (!mounted || content == null) return;
+      final parsed = parseTrackFile(
+        PickedTrackFile(name: meta.originalName, content: content),
+      );
+      if (!mounted) return;
+      _update(() {
+        _loadedTrack = parsed.parsed?.measuredFromStartIfOffset(meta.offsetM);
+        _loadedTrackKey = key;
+      }, persist: false);
+    } catch (error) {
+      debugPrint('uRunCalc: не удалось прочитать трек: $error');
+    } finally {
+      _loadingTrack = false;
+    }
+  }
+
+  /// Маркер ПП на карте. Пустое расстояние — маркера нет.
+  ElevationMarker? _elevationMarker(int index, double? km) {
+    if (km == null) return null;
+    final note = index < _notes.length ? _notes[index].trim() : '';
+    return ElevationMarker(
+      km: km,
+      label: index == 0
+          ? AppStrings.paceTrackStartLabel
+          : (note.isEmpty ? 'CP$index' : note),
+    );
+  }
+
+  /// Долгое нажатие на ряд высот открывает карту по текущему треку.
+  /// Без трека карта показывает «нет данных о высоте».
+  void _openElevationChart() {
+    final parsed = _loadedTrack;
+    final elevation = _elevationSegments;
+    final kms = <double?>[for (final v in _tableDistances) parseDecimal(v)];
+    final data = ElevationChartData(
+      profile: parsed == null
+          ? const []
+          : buildElevationProfile(parsed, maxPoints: 1000),
+      markers: [
+        for (var i = 0; i < kms.length; i++) ?_elevationMarker(i, kms[i]),
+      ],
+      totalAscentM: elevation?.totalAscentM ?? 0,
+      totalDescentM: elevation?.totalDescentM ?? 0,
+      boundariesKm: [for (final km in kms) ?km],
+    );
+    unawaited(showElevationChart(context, data));
+  }
+
+  /// Высота ряда подъём–спуск в портрете, пикселей.
+  static const double _elevationRowHeight = 30;
+
+  /// Клетки ряда подъём–спуск. Первая клетка служебная: `↑↓`.
+  List<Widget> _elevationCells() {
+    final elevation = _elevationSegments;
+    return List.generate(_columns, (index) {
+      if (index == 0) {
+        return _interactiveCell(
+          key: 'pace-elevation-label',
+          text: '↑↓',
+          result: true,
+          color: Colors.grey,
+          onLongPress: _openElevationChart,
+        );
+      }
+      final text = elevation == null
+          ? ''
+          : formatElevationPair(
+              elevation.ascentM[index],
+              elevation.descentM[index],
+            );
+      return _interactiveCell(
+        key: 'pace-elevation-$index',
+        text: text,
+        placeholder: elevation == null,
+        spans: elevation == null
+            ? null
+            : elevationPairSpans(
+                elevation.ascentM[index],
+                elevation.descentM[index],
+                upColor: AppColors.danger,
+                downColor: AppColors.focus,
+                separatorColor: AppColors.result,
+              ),
+        result: true,
+        dayBorder: _dayBorderColor(index, _limitDays),
+        boldBorder: _boldColumns.contains(index),
+        onLongPress: _openElevationChart,
+      );
+    });
+  }
+
+  /// Итог набора и сброса в портрете: отдельный ряд под рядом высот, две
+  /// половины — набор слева, сброс справа. Как ряд «Общее время / Темп в лимит».
+  Widget _elevationTotalRow({
+    required double height,
+    required bool expanded,
+    bool meters = false,
+  }) {
+    final elevation = _elevationSegments;
+    String fmt(double value) =>
+        meters ? formatElevationMeters(value) : formatElevationValue(value);
+    final ascent = elevation == null ? '—' : fmt(elevation.totalAscentM);
+    final descent = elevation == null ? '—' : fmt(elevation.totalDescentM);
+    final row = SizedBox(
+      height: height,
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0.5),
+              child: _interactiveCell(
+                key: 'pace-elevation-total-up',
+                text: AppStrings.paceTotalAscentLine(ascent),
+                result: true,
+                fontSize: 14,
+                onLongPress: _openElevationChart,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0.5),
+              child: _interactiveCell(
+                key: 'pace-elevation-total-down',
+                text: AppStrings.paceTotalDescentLine(descent),
+                result: true,
+                fontSize: 14,
+                onLongPress: _openElevationChart,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return expanded
+        ? row
+        : SizedBox(width: _columns * _fixedCellWidth, child: row);
+  }
+
+  /// Итог набора и сброса по всей дистанции (ландшафт, колонка Total).
+  Widget _elevationTotalCell() {
+    final elevation = _elevationSegments;
+    return _interactiveCell(
+      key: 'pace-elevation-total',
+      text: elevation == null
+          ? '—'
+          : formatElevationPair(
+              elevation.totalAscentM,
+              elevation.totalDescentM,
+            ),
+      result: true,
+      bold: true,
+      onLongPress: _openElevationChart,
+    );
+  }
+
   List<Widget> _distanceCells() {
     return List.generate(_columns, (index) {
       final focused =
@@ -3428,8 +4314,31 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     });
   }
 
+  /// Темп сегмента для ряда: чистый (по лимиту) или «с учётом стоянок»
+  /// по прибытиям плана, если включён переключатель в меню (§5).
+  int? _segmentPaceFor(int index) {
+    if (!_showStopsInPace || !_mountainEnabled) return _segmentPace(index);
+    final arrivals = PaceTableCalculator.elapsedByColumn(
+      _planTimes,
+      columns: _columns,
+    );
+    final pace = stopsAwareSegmentPace(
+      arrivalSec: [
+        for (final minutes in arrivals) minutes == null ? null : minutes * 60.0,
+      ],
+      // Длина сегмента `i−1 → i` = разность накопленных дистанций.
+      distancesKm: [
+        for (var i = 1; i < _columns; i++)
+          (parseDecimal(_tableDistances[i]) ?? 0) -
+              (parseDecimal(_tableDistances[i - 1]) ?? 0),
+      ],
+      column: index,
+    );
+    return pace?.round();
+  }
+
   List<Widget> _segmentPaceCells() {
-    final paces = List<int?>.generate(_columns, _segmentPace);
+    final paces = List<int?>.generate(_columns, _segmentPaceFor);
     return List.generate(_columns, (index) {
       final pace = paces[index];
       const baseColor = AppColors.focus;
@@ -3492,12 +4401,15 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       if (index == 0) {
         return _interactiveCell(
           key: 'pace-plan-pace-0',
-          text: 'PACE',
+          text: '↓\npace',
+          maxLines: 2,
+          fontSize: 14,
           result: true,
           color: Colors.white,
           dayBorder: _dayBorderColor(index, _planDays),
           boldBorder: _boldColumns.contains(index),
           onTap: _hideKeyboard,
+          onLongPress: _toggleStopsRow,
         );
       }
 
@@ -3524,6 +4436,62 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     });
   }
 
+  /// Ряд стоянок (§7.4): целые минуты, пусто = 0. Колонки 0 и финиш — без
+  /// стоянок. Красный — «План» выходит за лимит (`isPlanRed`), см. ряд
+  /// плана-времени.
+  List<Widget> _stopsCells({bool compact = false}) {
+    return List.generate(_columns, (index) {
+      if (index == 0 || index == _columns - 1) {
+        return _interactiveCell(
+          key: 'pace-stop-$index',
+          text: index == 0 && !compact ? AppStrings.paceRowStops : '',
+          result: true,
+          color: Colors.grey,
+          fontSize: 14,
+          dayBorder: _dayBorderColor(index, _planDays),
+          boldBorder: _boldColumns.contains(index),
+          onTap: _hideKeyboard,
+          onLongPress: _toggleStopsRow,
+        );
+      }
+      final focused =
+          _focus.kind == _PaceFocusKind.tableStop &&
+          _focus.tableColumn == index;
+      final minutes = _stopMinutes(index);
+      return _interactiveCell(
+        key: 'pace-stop-$index',
+        text: focused ? _stopBufferText(index) : (minutes == 0 ? '0' : '$minutes'),
+        placeholder: !focused && minutes == 0,
+        focused: focused,
+        editable: !_locked,
+        cursorFirst: focused,
+        color: Colors.white,
+        dayBorder: _dayBorderColor(index, _planDays),
+        boldBorder: _boldColumns.contains(index),
+        semanticLabel: AppStrings.paceStopsHint,
+        onTap: _locked ? null : () => _focusStop(index),
+        onLongPress: _toggleStopsRow,
+      );
+    });
+  }
+
+  /// Итог стоянок для колонки Total (ландшафт): сумма по ПП, сек → ч:мм.
+  String _formatStopsTotal() {
+    final total = sumIntermediateStops(_stopsSecList(), _columns);
+    if (total <= 0) return '0';
+    return _formatElapsedMinutes((total / 60).round());
+  }
+
+  void _focusStop(int column) {
+    if (_locked) return;
+    _beginTableFocus(_PaceFocus.tableStop(column));
+  }
+
+  void _toggleStopsRow() {
+    _hideKeyboard();
+    _update(() => _stopsRowOpen = !_stopsRowOpen, persist: false);
+  }
+
   Widget _wrappedTextRow({
     required List<String> values,
     required String keyPrefix,
@@ -3532,6 +4500,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     required bool expanded,
     required bool showFirstPlaceholder,
     Widget? total,
+    double fontSize = 11.5,
   }) {
     final content = LayoutBuilder(
       builder: (context, constraints) {
@@ -3588,6 +4557,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
                         keyPrefix: keyPrefix,
                         keySuffix: '$keyPrefix-text-$index',
                         height: height,
+                        fontSize: fontSize,
                       ),
                     ),
                   ),
@@ -3686,6 +4656,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     required String keyPrefix,
     required String keySuffix,
     required double height,
+    double fontSize = 11.5,
   }) {
     final maxLines = math.max(1, (height / 13).floor());
     return Container(
@@ -3700,9 +4671,9 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         ),
         maxLines: maxLines,
         overflow: TextOverflow.clip,
-        style: const TextStyle(
+        style: TextStyle(
           color: Colors.white,
-          fontSize: 11.5,
+          fontSize: fontSize,
           height: 1.15,
         ),
       ),
@@ -3757,6 +4728,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     VoidCallback? onLongPress,
     String? semanticLabel,
     String? semanticHint,
+    List<TextSpan>? spans,
   }) {
     final defaultBorder = editable
         ? Colors.grey.shade700
@@ -3785,18 +4757,31 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (focused && cursorFirst) _cursor(),
-              Text(
-                text,
-                maxLines: maxLines,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: placeholder
-                      ? Colors.grey.shade600
-                      : color ?? (result ? AppColors.result : Colors.white),
-                  fontSize: fontSize,
-                  fontWeight: bold ? FontWeight.bold : null,
+              if (spans != null && !placeholder)
+                Text.rich(
+                  TextSpan(
+                    children: spans,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: bold ? FontWeight.bold : null,
+                    ),
+                  ),
+                  maxLines: maxLines,
+                  textAlign: TextAlign.center,
+                )
+              else
+                Text(
+                  text,
+                  maxLines: maxLines,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: placeholder
+                        ? Colors.grey.shade600
+                        : color ?? (result ? AppColors.result : Colors.white),
+                    fontSize: fontSize,
+                    fontWeight: bold ? FontWeight.bold : null,
+                  ),
                 ),
-              ),
               if (focused && !cursorFirst) _cursor(),
             ],
           ),

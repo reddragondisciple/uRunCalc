@@ -83,8 +83,12 @@ class AppStrings {
   static const String paceRowSegmentPace = 'Темп сегмента';
   static const String paceRowPlan = 'План';
   static const String paceRowPlanPace = 'Плановый темп';
+  static const String paceRowStops = 'Стоянки';
+  static const String paceStopsTitle = 't stops';
+  static const String paceStopsHint = 'Стоянка, мин';
   static const String paceRowWater = 'Вода';
   static const String paceRowFood = 'Еда';
+  static const String paceRowElevation = 'Подъём';
 
   static const String paceHintMinutes = 'мин';
   static const String paceHintSeconds = 'сек';
@@ -115,13 +119,95 @@ class AppStrings {
   // Pace и Ultra: таблица и итоги.
   static const String paceColumnsTitle = 'Колонки таблицы';
   static const String paceColumnsSemantic = 'Добавить или убрать колонки';
+  static const String paceSettingsSemantic = 'Настройки таблицы';
+  static const String paceSettingsTitle = 'Настройки таблицы';
+  static const String paceSettingsColumns = '+− ПП';
+  static const String paceSettingsMountain = 'Горный режим';
+  static const String paceSettingsImportGpx = 'Загрузить трек GPX';
+  static const String paceSettingsTrackSlot = 'Основной / резервный трек';
+  static const String paceSettingsManualElevation = 'Править высоты вручную';
+
+  static const String elevationChartTitle = 'Карта высот';
+  static const String elevationChartNoData = 'Нет данных о высоте';
+  static const String elevationChartWholeDistance = '← вся дистанция';
+  static const String elevationChartClose = 'Закрыть';
+  static const String elevationChartHint =
+      'Тап по профилю — подсказка, двойной тап или «Сегмент» — фокус на участке';
+  static const String elevationChartSegmentFocus = 'Сегмент';
+  static const String elevationChartLegend = 'Уклон, окно 100 м';
+  static const String elevationChartAltitudeUnit = 'м';
+
+  static String elevationChartAxisKm(String km) => '$km км';
+
+  static String elevationChartPoint({
+    required String km,
+    required String ele,
+    required String grade,
+  }) => '$km км · $ele м · $grade';
+
+  static String elevationChartSegment({
+    required String ascent,
+    required String descent,
+  }) => 'Набор $ascent м · сброс $descent м';
+
+  static String elevationChartSummary({
+    required String ascent,
+    required String descent,
+  }) => 'Набор $ascent м, сброс $descent м';
+
+  static String paceElevationSegmentTitle(String from, String to) =>
+      'Участок $from – $to';
+  static const String paceSettingsStopsModeDeferred =
+      'Темп сегмента: с учётом стоянок (отложено)';
+  static const String paceSettingsExportTcx = 'Выгрузить план TCX';
+  static const String paceSettingsExportTcxHint = 'скоро';
+  static const String paceTrackPrimary = 'Основной';
+  static const String paceTrackBackup = 'Резервный';
+  static const String paceTrackImportTitle = 'Загрузить трек';
+  static const String paceTrackImportSlot = 'В какой слот загрузить';
+  static const String paceTrackPickCancelled = 'Файл не выбран';
+  static const String paceTrackReadError = 'Не удалось прочитать файл';
+  static const String paceTrackParseErrorPrefix = 'Трек не загружен: ';
+  static const String paceTrackImportModeTitle = 'Что обновить из трека';
+  static const String paceTrackImportFinishOnly = 'Только общую дистанцию';
+  static const String paceTrackImportCheckpoints =
+      'Финиш и чекпойнты (сравнить)';
+  static const String paceTrackImportFinishOnlyHint =
+      'Меняется только финиш, остальные ПП не трогаем.';
+  static const String paceTrackImportOverwriteTitle = 'Заменить трек?';
+  static const String paceTrackImportOverwriteBody =
+      'В выбранном слоте уже есть трек. Заменить его новым файлом?';
+  static const String paceTrackImportReplace = 'Заменить';
+  static const String paceTrackImportFinishBeforeLast =
+      'Финиш трека раньше последнего ПП. Проверьте трек или таблицу.';
+  static const String paceTrackImportNonMonotonic =
+      'После импорта расстояния перестали возрастать. Изменения не применены.';
+  static const String paceTrackImportApplied = 'Трек загружен';
+  static const String paceTrackImportNeedsUnlock =
+      'Таблица заблокирована. Разблокировать и загрузить трек?';
+  static const String paceTrackImportUnlockAction = 'Разблокировать';
+  static const String paceTrackCompareTitle = 'Сравнение с треком';
+  static const String paceTrackCompareColumn = 'Колонка';
+  static const String paceTrackCompareNow = 'Сейчас, км';
+  static const String paceTrackCompareTrack = 'По треку, км';
+  static const String paceTrackCompareDelta = 'Δ, км';
+  static const String paceTrackCompareApply = 'Применить';
+  static const String paceTrackCompareNoMatch = 'нет совпадения';
+  static const String paceTrackStartPromptTitle = 'Старт трека';
+  static const String paceTrackStartPromptBody =
+      'Трек начинается далеко от точки Start. Что считать стартом?';
+  static const String paceTrackStartAtPoint = 'Ближайшая точка трека';
+  static const String paceTrackStartAsIs = 'Начало трека как есть';
+  static const String paceTrackStartLabel = 'Старт';
+  static const String paceTrackFinishLabel = 'Финиш';
+
   static const String paceScaleFit = 'Масштаб: вписать';
   static const String paceScaleActual = 'Масштаб: 1:1';
 
   static const String paceTotalTime = 'Общее время';
   static const String paceLimitPace = 'Темп в лимит';
-  static const String pacePlannedTime = 'Итоговое плановое время';
-  static const String pacePlannedPace = 'Итоговый плановый темп';
+  static const String pacePlannedTime = 'Итоговое время';
+  static const String pacePlannedPace = 'Итоговый темп';
 
   static const String paceTotalTimeDescription =
       'Общее время по данным строки «Лимит»: сумма переходов от старта '
@@ -129,7 +215,7 @@ class AppStrings {
   static const String paceLimitPaceDescription =
       'Итоговый темп всей дистанции по данным строки «Лимит».';
   static const String pacePlannedPaceDescription =
-      'Итоговый плановый темп по данным строки «План».';
+      'Итоговый темп по данным строки «План».';
   static const String pacePlannedTimeDescription =
       'Длительность плана: разница между плановым стартом и плановым '
       'финишем.';
@@ -157,11 +243,21 @@ class AppStrings {
   static const String pacePrintAction = 'Печать';
 
   // Pace и Ultra: плановые расчёты.
-  static const String paceEnterPlannedTime = 'Введите итоговое плановое время';
-  static const String paceEnterPlannedPace = 'Введите итоговый плановый темп';
+  static const String paceEnterPlannedTime = 'Введите итоговое время';
+  static const String paceEnterPlannedPace = 'Введите итоговый темп';
   static const String paceFillDistance =
       'Заполните расстояние в ряду «Расстояние, км»';
   static const String paceFillStartTime = 'Заполните время старта';
+  static const String paceInputModeTitle = 'Как введён темп?';
+  static const String paceInputModeFlat = 'Плоские данные';
+  static const String paceInputModeAdjusted = 'Уже с поправкой на высоты';
+  static const String paceInputStopsLabel = 'Стоянки, мин';
+  static const String paceInputPreviewFlat = 'Плоский';
+  static const String paceInputPreviewCalc = 'расчётный';
+  static const String paceInputPreviewTotal = 'итог';
+  static const String paceInputPreviewStops = 'со стоянками';
+  static const String paceInputMinutesShort = 'мин';
+  static const String paceInputPreviewUnavailable = 'Предпросмотр недоступен';
   static const String paceRecalcTitle = 'Пересчитать план?';
   static const String paceRecalcAction = 'Пересчитать';
 
@@ -210,13 +306,17 @@ class AppStrings {
 
   static String paceTotalTimeLine(String value) => 'Общее время - $value';
 
+  static String paceTotalAscentLine(String value) => 'Набор - $value';
+
+  static String paceTotalDescentLine(String value) => 'Сброс - $value';
+
   static String paceLimitPaceLine(String value) => 'Темп в лимит - $value';
 
   static String pacePlannedPaceLine(String value) =>
-      'Итоговый плановый темп - $value';
+      'Итоговый темп - $value';
 
   static String pacePlannedTimeLine(String value) =>
-      'Итоговое плановое время - $value';
+      'Итоговое время - $value';
 
   // Подписи клавиш для screen reader.
   static const String keyClearHistory =
@@ -260,5 +360,5 @@ class AppStrings {
       'Общее время: $time    Темп в лимит: $pace';
 
   static String printPlanSummary(String pace, String time) =>
-      'Итоговый плановый темп: $pace    Итоговое плановое время: $time';
+      'Итоговый темп: $pace    Итоговое время: $time';
 }
