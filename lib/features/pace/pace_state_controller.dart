@@ -110,9 +110,19 @@ class PaceStateController {
   bool removeEvent(String name) {
     if (events.length <= 1) return false;
 
-    final before = events.length;
-    events.removeWhere((event) => event.name == name);
-    if (events.length == before) return false;
+    PaceEvent? removed;
+    for (final event in events) {
+      if (event.name == name) {
+        removed = event;
+        break;
+      }
+    }
+    if (removed == null) return false;
+
+    events.remove(removed);
+    for (final distance in removed.distances) {
+      _removedDistances.add((name, distance.name));
+    }
 
     _tables.removeWhere(
       (key, _) => key.startsWith(PaceStateCodec.tableKeyPrefix(name)),

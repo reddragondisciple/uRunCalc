@@ -39,8 +39,12 @@ void main() {
     });
 
     test('реальный трек GRUT: 19 wpt и высоты', () {
-      final file = File('GRUT100 - T100.gpx');
-      expect(file.existsSync(), isTrue, reason: 'трек должен лежать в корне');
+      final file = File('test/fixtures/GRUT100 - T100.gpx');
+      expect(
+        file.existsSync(),
+        isTrue,
+        reason: 'фикстура должна лежать в test/fixtures',
+      );
       final track = parseGpx(file.readAsStringSync());
       expect(track.waypoints.length, 19);
       expect(track.hasElevation, isTrue);

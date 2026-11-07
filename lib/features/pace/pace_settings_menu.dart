@@ -64,14 +64,6 @@ class PaceSettingsMenu {
                   '${state.activeSlotLabel}',
                 ),
               ),
-              SimpleDialogOption(
-                key: const ValueKey('pace-settings-manual-elevation'),
-                onPressed: () => Navigator.pop(
-                  dialogContext,
-                  PaceSettingsChoice.manualElevation,
-                ),
-                child: const Text(AppStrings.paceSettingsManualElevation),
-              ),
             ],
             // Отложено: режим «темп с учётом стоянок» не входит в текущий план.
             // Пункт виден серым, без реакции на нажатие.
@@ -117,8 +109,6 @@ class PaceSettingsMenu {
         await actions.onImportGpx();
       case PaceSettingsChoice.trackSlot:
         await actions.onTrackSlot();
-      case PaceSettingsChoice.manualElevation:
-        await actions.onManualElevation();
     }
   }
 }
@@ -129,7 +119,6 @@ enum PaceSettingsChoice {
   mountainOff,
   importGpx,
   trackSlot,
-  manualElevation,
 }
 
 /// Состояние, которое меню показывает.
@@ -152,7 +141,6 @@ class PaceSettingsActions {
     required this.onMountainChanged,
     required this.onImportGpx,
     required this.onTrackSlot,
-    required this.onManualElevation,
     required this.onStopsModeChanged,
   });
 
@@ -160,6 +148,5 @@ class PaceSettingsActions {
   final void Function(bool enabled) onMountainChanged;
   final Future<void> Function() onImportGpx;
   final Future<void> Function() onTrackSlot;
-  final Future<void> Function() onManualElevation;
   final void Function(bool enabled) onStopsModeChanged;
 }

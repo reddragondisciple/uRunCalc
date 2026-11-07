@@ -125,7 +125,6 @@ class AppStrings {
   static const String paceSettingsMountain = 'Горный режим';
   static const String paceSettingsImportGpx = 'Загрузить трек GPX';
   static const String paceSettingsTrackSlot = 'Основной / резервный трек';
-  static const String paceSettingsManualElevation = 'Править высоты вручную';
 
   static const String elevationChartTitle = 'Карта высот';
   static const String elevationChartNoData = 'Нет данных о высоте';
@@ -167,6 +166,8 @@ class AppStrings {
   static const String paceTrackImportSlot = 'В какой слот загрузить';
   static const String paceTrackPickCancelled = 'Файл не выбран';
   static const String paceTrackReadError = 'Не удалось прочитать файл';
+  static const String paceTrackFileTooLarge =
+      'Файл больше 50 МБ — выберите трек меньшего размера';
   static const String paceTrackParseErrorPrefix = 'Трек не загружен: ';
   static const String paceTrackImportModeTitle = 'Что обновить из трека';
   static const String paceTrackImportFinishOnly = 'Только общую дистанцию';
@@ -312,11 +313,9 @@ class AppStrings {
 
   static String paceLimitPaceLine(String value) => 'Темп в лимит - $value';
 
-  static String pacePlannedPaceLine(String value) =>
-      'Итоговый темп - $value';
+  static String pacePlannedPaceLine(String value) => 'Итоговый темп - $value';
 
-  static String pacePlannedTimeLine(String value) =>
-      'Итоговое время - $value';
+  static String pacePlannedTimeLine(String value) => 'Итоговое время - $value';
 
   // Подписи клавиш для screen reader.
   static const String keyClearHistory =

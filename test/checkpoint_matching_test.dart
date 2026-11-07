@@ -102,8 +102,12 @@ void main() {
 
   group('matching на реальном GRUT T100', () {
     test('колонки совпадают с таблицей сравнения из переписки', () {
-      final file = File('GRUT100 - T100.gpx');
-      expect(file.existsSync(), isTrue, reason: 'трек должен лежать в корне');
+      final file = File('test/fixtures/GRUT100 - T100.gpx');
+      expect(
+        file.existsSync(),
+        isTrue,
+        reason: 'фикстура должна лежать в test/fixtures',
+      );
       final track = parseGpx(file.readAsStringSync());
       final metrics = computeTrackMetrics(track);
       final cands = buildCandidates(track, metrics);
@@ -148,7 +152,9 @@ void main() {
     });
 
     test('ToD end вне трека в радиусе 100 м — не автоподсказка', () {
-      final track = parseGpx(File('GRUT100 - T100.gpx').readAsStringSync());
+      final track = parseGpx(
+        File('test/fixtures/GRUT100 - T100.gpx').readAsStringSync(),
+      );
       final metrics = computeTrackMetrics(track);
       final tod = buildCandidates(
         track,

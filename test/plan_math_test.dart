@@ -110,17 +110,11 @@ void main() {
 
   group('isPlanRed', () {
     test('красный, если прибытие уже позже лимита', () {
-      expect(
-        isPlanRed(arrivalSec: 3600, stopSec: 0, limitSec: 3500),
-        isTrue,
-      );
+      expect(isPlanRed(arrivalSec: 3600, stopSec: 0, limitSec: 3500), isTrue);
     });
 
     test('красный, если стоянка выводит за лимит', () {
-      expect(
-        isPlanRed(arrivalSec: 3000, stopSec: 600, limitSec: 3500),
-        isTrue,
-      );
+      expect(isPlanRed(arrivalSec: 3000, stopSec: 600, limitSec: 3500), isTrue);
     });
 
     test('не красный, если прибытие + стоянка укладываются в лимит', () {
@@ -144,15 +138,27 @@ void main() {
 
     test('null без данных прибытия или нулевой длины', () {
       expect(
-        stopsAwareSegmentPace(arrivalSec: [0, null], distancesKm: [10], column: 1),
+        stopsAwareSegmentPace(
+          arrivalSec: [0, null],
+          distancesKm: [10],
+          column: 1,
+        ),
         isNull,
       );
       expect(
-        stopsAwareSegmentPace(arrivalSec: [0, 100], distancesKm: [0], column: 1),
+        stopsAwareSegmentPace(
+          arrivalSec: [0, 100],
+          distancesKm: [0],
+          column: 1,
+        ),
         isNull,
       );
       expect(
-        stopsAwareSegmentPace(arrivalSec: [0, 100], distancesKm: [10], column: 0),
+        stopsAwareSegmentPace(
+          arrivalSec: [0, 100],
+          distancesKm: [10],
+          column: 0,
+        ),
         isNull,
       );
     });

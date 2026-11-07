@@ -20,6 +20,22 @@ class PickedTrackFile {
   final String content;
 }
 
+/// Ошибка выбора/чтения файла трека. Текст уже готов для показа пользователю.
+class TrackFilePickException implements Exception {
+  const TrackFilePickException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Проверяет размер файла до чтения. `null` — размер допустим.
+String? trackFileTooLargeError(int bytes) {
+  if (bytes <= gpxMaxBytes) return null;
+  return AppStrings.paceTrackFileTooLarge;
+}
+
 /// Выбор файла через системный диалог (`file_selector`).
 ///
 /// Фильтр по расширению `.gpx` на iOS и Android ненадёжен, поэтому разрешаем
@@ -28,13 +44,37 @@ class TrackFilePicker {
   TrackFilePicker._();
 
   /// Возвращает `null`, если пользователь отменил выбор.
+  ///
+  /// Бросает [TrackFilePickException] с готовым текстом, если системный диалог
+  /// не открылся, файл не читается или превышает лимит парсера.
   static Future<PickedTrackFile?> pick() async {
-    final XFile? file = await openFile(
-      confirmButtonText: AppStrings.paceTrackImportTitle,
-    );
+    final XFile? file;
+    try {
+      file = await openFile(confirmButtonText: AppStrings.paceTrackImportTitle);
+    } catch (error) {
+      debugPrint('uRunCalc: файловый диалог недоступен: $error');
+      throw const TrackFilePickException(AppStrings.paceTrackReadError);
+    }
     if (file == null) return null;
-    final content = await file.readAsString();
-    return PickedTrackFile(name: file.name, content: content);
+
+    try {
+      // Размер проверяем до чтения, чтобы не тянуть в память гигантский файл.
+      final bytes = await file.length();
+      final sizeError = trackFileTooLargeError(bytes);
+      if (sizeError != null) throw TrackFilePickException(sizeError);
+
+      final content = await file.readAsString();
+      // Не все платформы знают длину заранее: проверяем и саму строку.
+      final contentError = trackFileTooLargeError(content.length);
+      if (contentError != null) throw TrackFilePickException(contentError);
+
+      return PickedTrackFile(name: file.name, content: content);
+    } on TrackFilePickException {
+      rethrow;
+    } catch (error) {
+      debugPrint('uRunCalc: не удалось прочитать выбранный файл: $error');
+      throw const TrackFilePickException(AppStrings.paceTrackReadError);
+    }
   }
 }
 

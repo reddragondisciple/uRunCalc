@@ -71,8 +71,12 @@ void main() {
     });
 
     test('реальный трек: 2D-длина GRUT ≈ 109.3 км', () {
-      final file = File('GRUT100 - T100.gpx');
-      expect(file.existsSync(), isTrue, reason: 'трек должен лежать в корне');
+      final file = File('test/fixtures/GRUT100 - T100.gpx');
+      expect(
+        file.existsSync(),
+        isTrue,
+        reason: 'фикстура должна лежать в test/fixtures',
+      );
       final metrics = computeTrackMetrics(parseGpx(file.readAsStringSync()));
       expect(metrics.totalDistance2d / 1000, closeTo(109.31, 0.05));
     });

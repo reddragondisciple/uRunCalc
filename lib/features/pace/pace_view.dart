@@ -82,6 +82,12 @@ enum _PaceSurface { pace, ultra }
 @visibleForTesting
 TrackFileStore? debugTrackFileStoreOverride;
 
+/// Тестовая подмена загрузчика состояния по ключу хранилища.
+/// Позволяет проверить гонку «ввод пользователя до окончания загрузки».
+@visibleForTesting
+Future<Map<String, dynamic>?> Function(String storageKey)?
+debugPaceStateLoaderOverride;
+
 class _PaceView extends StatefulWidget {
   const _PaceView({required this.active, required this.surface});
 
@@ -147,6 +153,10 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   /// Стартовые данные этой таблицы уже применены или проверены.
   bool _seeded = false;
 
+  /// Пользователь изменил состояние до окончания восстановления из хранилища.
+  /// В этом случае поздний ответ загрузки не должен затирать ввод.
+  bool _stateTouched = false;
+
   /// Колонки, у которых долгим нажатием включены жирные границы.
   final Set<int> _boldColumns = {};
 
@@ -195,9 +205,14 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       : AppStrings.paceTrackPrimary;
 
   /// Переключает горный режим. Данные таблицы не теряются при выключении —
-  /// только скрываются ряды.
+  /// только скрываются ряды. При включении подгружаем трек и пересчитываем
+  /// план: состояние могло быть восстановлено с выключенным режимом.
   void _setMountainMode(bool enabled) {
-    _update(() => _mountainEnabled = enabled);
+    _update(() {
+      _mountainEnabled = enabled;
+      if (enabled) _recomputeMountainPlan();
+    });
+    if (enabled) unawaited(_ensureTrackLoaded());
   }
 
   void _setStopsInPace(bool enabled) {
@@ -208,7 +223,13 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   /// это сделает импорт (следующий шаг).
   Future<void> _chooseTrackSlot() async {
     final next = _activeTrackSlot == 'backup' ? 'primary' : 'backup';
-    _update(() => _tracks = _withActive(_tracks, next));
+    _update(() {
+      _tracks = _withActive(_tracks, next);
+      // Старый слот больше не актуален: не показываем его высоты, пока
+      // читается новый трек.
+      _loadedTrack = null;
+      _loadedTrackKey = null;
+    });
     unawaited(_ensureTrackLoaded());
   }
 
@@ -236,7 +257,14 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       return;
     }
 
-    final picked = await TrackFilePicker.pick();
+    final PickedTrackFile? picked;
+    try {
+      picked = await TrackFilePicker.pick();
+    } on TrackFilePickException catch (error) {
+      if (!mounted) return;
+      _showMessage(error.message);
+      return;
+    }
     if (picked == null || !mounted) return;
 
     final parsed = parseTrackFile(picked);
@@ -397,23 +425,31 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _manualElevationFlow() async {}
-
   /// Файлы GPX-треков. Появляется после того, как `path_provider` вернёт
   /// каталог поддержки; до этого операции с треками недоступны.
   TrackFileStore? _trackFiles;
 
   Future<void> _initTrackFiles() async {
-    final override = debugTrackFileStoreOverride;
-    if (override != null) {
-      _trackFiles = override;
-    } else {
-      final support = await getApplicationSupportDirectory();
-      if (!mounted) return;
-      _trackFiles = DirectoryTrackFileStore(
-        Directory('${support.path}${Platform.pathSeparator}tracks'),
-      );
+    // На web нет `path_provider` и файловой системы: треки недоступны,
+    // приложение продолжает работать без горного режима.
+    if (kIsWeb) return;
+
+    try {
+      final override = debugTrackFileStoreOverride;
+      if (override != null) {
+        _trackFiles = override;
+      } else {
+        final support = await getApplicationSupportDirectory();
+        if (!mounted) return;
+        _trackFiles = DirectoryTrackFileStore(
+          Directory('${support.path}${Platform.pathSeparator}tracks'),
+        );
+      }
+    } catch (error) {
+      // Нет каталога/разрешений — это не повод ронять экран.
+      debugPrint('uRunCalc: хранилище треков недоступно: $error');
     }
+    if (!mounted) return;
     // Загрузка трека могла стартовать раньше, чем появилось хранилище.
     unawaited(_ensureTrackLoaded());
   }
@@ -435,6 +471,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   /// Единая точка изменения состояния: перерисовывает экран и планирует
   /// сохранение. Сохранение можно отключить для чисто визуальных изменений.
   void _update(VoidCallback fn, {bool persist = true}) {
+    if (persist && !_controller.stateLoaded) _stateTouched = true;
     super.setState(fn);
     if (persist) _persist();
   }
@@ -502,9 +539,16 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   }
 
   Future<void> _loadPaceState() async {
-    final data = await _store.load();
+    final loader = debugPaceStateLoaderOverride;
+    final data = await (loader?.call(_storageKey) ?? _store.load());
 
     if (!mounted) return;
+    if (_stateTouched) {
+      // Пользователь уже начал вводить данные. Применение сохранённого
+      // состояния затерло бы их, поэтому только разрешаем сохранение.
+      _update(() => _controller.stateLoaded = true);
+      return;
+    }
     _update(() {
       if (data != null) {
         _applyState(data);
@@ -1611,6 +1655,9 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       }
       _planTimes[column] = _appendTimeBuffer(_planTimes[column], char);
       _planPaces[column] = '';
+      // Правка старта плана не фиксирует ручную опору: от неё план должен
+      // пересчитаться. Ручными считаются только промежуточные прибытия.
+      if (column > 0) _markManualAnchor();
       _resetPlannedSummary();
     });
   }
@@ -1677,6 +1724,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   bool _recomputeMountainPlan() {
     final anchor = _planAnchor;
     if (!_mountainEnabled || anchor == null) return false;
+    // Ручная правка времени или темпа: значения пользователя не пересчитываем.
     if (anchor.kind == PlanAnchorKind.manual) return false;
     final segments = planSegmentsForColumns(
       parsed: _loadedTrack,
@@ -1757,7 +1805,9 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   void _removeStopDigit(int column) {
     if (column <= 0 || column >= _columns - 1) return;
     final current = _stopBufferText(column);
-    final rest = current.length <= 1 ? '' : current.substring(0, current.length - 1);
+    final rest = current.length <= 1
+        ? ''
+        : current.substring(0, current.length - 1);
     _update(() => _setStopMinutes(column, rest.isEmpty ? 0 : int.parse(rest)));
   }
 
@@ -1939,6 +1989,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
             _planTimes[_focus.tableColumn],
           );
           _planPaces[_focus.tableColumn] = '';
+          if (_focus.tableColumn > 0) _markManualAnchor();
           _resetPlannedSummary();
         case _PaceFocusKind.tablePlanPace:
           final column = _focus.tableColumn;
@@ -2294,6 +2345,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       _controller.removeEvent(result);
       if (wasSelected) _loadCurrentTable();
     });
+    await _deleteRemovedTracks();
   }
 
   Future<void> _addDistance(PaceEvent event) async {
@@ -2431,7 +2483,6 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         onMountainChanged: _setMountainMode,
         onImportGpx: _importGpxFlow,
         onTrackSlot: _chooseTrackSlot,
-        onManualElevation: _manualElevationFlow,
         onStopsModeChanged: _setStopsInPace,
       ),
     );
@@ -3851,7 +3902,10 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   }
 
   /// Итоги плана одной строкой в портрете: темп и время делят ширину пополам.
-  Widget _plannedSummaryPairRow({required double height, required bool expanded}) {
+  Widget _plannedSummaryPairRow({
+    required double height,
+    required bool expanded,
+  }) {
     final row = SizedBox(
       height: height,
       child: Row(
@@ -4102,6 +4156,14 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   String? _loadedTrackKey;
   bool _loadingTrack = false;
 
+  /// Во время чтения поступил ещё один запрос: после завершения текущего
+  /// нужно проверить актуальный ключ и при необходимости загрузить другой трек.
+  bool _trackLoadQueued = false;
+
+  String _currentTrackKey() =>
+      '${trackDistanceKey(_controller.selectedEvent, _controller.selectedDistance)}'
+      '/${_tracks.active}';
+
   /// D+/D− по сегментам текущей таблицы. `null`, если трека нет или он не
   /// загружен; тогда ряд показывает прочерк.
   ElevationSegments? get _elevationSegments {
@@ -4116,38 +4178,83 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
   }
 
   /// Читает активный трек с диска. Ошибки не роняют экран: ряд просто пуст.
+  ///
+  /// Во время `await` пользователь может сменить дистанцию или слот. Поэтому
+  /// после чтения ключ сверяется с текущим, а устаревший результат не
+  /// применяется: вместо этого загружается актуальный трек.
   Future<void> _ensureTrackLoaded() async {
-    final files = _trackFiles;
-    final meta = _tracks.activeTrack;
-    final key =
-        '${trackDistanceKey(_controller.selectedEvent, _controller.selectedDistance)}'
-        '/${_tracks.active}';
-    if (files == null || meta == null || !_mountainEnabled) return;
-    if (_loadedTrackKey == key && _loadedTrack != null) return;
-    if (_loadingTrack) return;
+    if (_loadingTrack) {
+      _trackLoadQueued = true;
+      return;
+    }
 
     _loadingTrack = true;
     try {
-      final content = await files.read(
-        distanceKey: trackDistanceKey(
-          _controller.selectedEvent,
-          _controller.selectedDistance,
-        ),
-        fileName: meta.relativePath,
-      );
-      if (!mounted || content == null) return;
-      final parsed = parseTrackFile(
-        PickedTrackFile(name: meta.originalName, content: content),
-      );
-      if (!mounted) return;
-      _update(() {
-        _loadedTrack = parsed.parsed?.measuredFromStartIfOffset(meta.offsetM);
-        _loadedTrackKey = key;
-      }, persist: false);
+      while (mounted) {
+        final files = _trackFiles;
+        final meta = _tracks.activeTrack;
+        final key = _currentTrackKey();
+        if (files == null || meta == null || !_mountainEnabled) return;
+        if (_loadedTrackKey == key) return;
+
+        final content = await files.read(
+          distanceKey: trackDistanceKey(
+            _controller.selectedEvent,
+            _controller.selectedDistance,
+          ),
+          fileName: meta.relativePath,
+        );
+        if (!mounted) return;
+
+        // Пока читали, выбор мог измениться — этот результат уже не нужен.
+        if (key != _currentTrackKey()) {
+          _trackLoadQueued = true;
+          continue;
+        }
+
+        if (content == null) {
+          // Файла нет: запоминаем ключ, чтобы не перечитывать его на каждый
+          // запрос. Импорт сбрасывает ключ и попробует снова.
+          _update(() {
+            _loadedTrack = null;
+            _loadedTrackKey = key;
+          }, persist: false);
+          return;
+        }
+
+        final parsed = parseTrackFile(
+          PickedTrackFile(name: meta.originalName, content: content),
+        );
+        if (parsed.parsed == null) {
+          // Битый файл: ведём себя как с отсутствующим.
+          _update(() {
+            _loadedTrack = null;
+            _loadedTrackKey = key;
+          }, persist: false);
+          return;
+        }
+        if (!mounted) return;
+        if (key != _currentTrackKey()) {
+          _trackLoadQueued = true;
+          continue;
+        }
+
+        _update(() {
+          _loadedTrack = parsed.parsed!.measuredFromStartIfOffset(meta.offsetM);
+          _loadedTrackKey = key;
+          // Новый трек меняет высоты сегментов — план пересчитывается.
+          _recomputeMountainPlan();
+        }, persist: false);
+        return;
+      }
     } catch (error) {
       debugPrint('uRunCalc: не удалось прочитать трек: $error');
     } finally {
       _loadingTrack = false;
+      if (_trackLoadQueued) {
+        _trackLoadQueued = false;
+        unawaited(_ensureTrackLoaded());
+      }
     }
   }
 
@@ -4460,7 +4567,9 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
       final minutes = _stopMinutes(index);
       return _interactiveCell(
         key: 'pace-stop-$index',
-        text: focused ? _stopBufferText(index) : (minutes == 0 ? '0' : '$minutes'),
+        text: focused
+            ? _stopBufferText(index)
+            : (minutes == 0 ? '0' : '$minutes'),
         placeholder: !focused && minutes == 0,
         focused: focused,
         editable: !_locked,
@@ -4671,11 +4780,7 @@ class _PaceViewState extends State<_PaceView> with WidgetsBindingObserver {
         ),
         maxLines: maxLines,
         overflow: TextOverflow.clip,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: fontSize,
-          height: 1.15,
-        ),
+        style: TextStyle(color: Colors.white, fontSize: fontSize, height: 1.15),
       ),
     );
   }

@@ -94,8 +94,12 @@ void main() {
       'WBU L120.gpx',
     ]) {
       test('$name: старт в начале трека, вопрос не нужен', () {
-        final file = File(name);
-        expect(file.existsSync(), isTrue, reason: 'трек должен лежать в корне');
+        final file = File('test/fixtures/$name');
+        expect(
+          file.existsSync(),
+          isTrue,
+          reason: 'фикстура должна лежать в test/fixtures',
+        );
         final track = parseGpx(file.readAsStringSync());
         final offset = trackStartOffsetMeters(track)!;
         expect(offset, lessThan(200));

@@ -152,6 +152,25 @@ void main() {
       expect(controller.tableFor('GRUT', 'T100')!.times.first, '0100');
     });
 
+    test('remove records all distances for track cleanup', () {
+      final controller = PaceStateController.defaults();
+
+      expect(controller.removeEvent('Mad Fox Ultra'), isTrue);
+
+      final removed = controller.takeRemovedDistances();
+      expect(removed, contains(('Mad Fox Ultra', PaceCatalog.vrDistance)));
+      expect(removed.every((pair) => pair.$1 == 'Mad Fox Ultra'), isTrue);
+      // Повторный забор не должен возвращать те же дистанции.
+      expect(controller.takeRemovedDistances(), isEmpty);
+    });
+
+    test('remove of an unknown event records nothing', () {
+      final controller = PaceStateController.defaults();
+
+      expect(controller.removeEvent('Нет такого'), isFalse);
+      expect(controller.takeRemovedDistances(), isEmpty);
+    });
+
     test('remove of the selected event falls back to the first one', () {
       final controller = PaceStateController.defaults();
       final madFox = controller.eventNamed(PaceCatalog.madFoxEvent);

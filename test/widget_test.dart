@@ -2635,19 +2635,11 @@ void main() {
     expect(paceCellColor(tester, 'pace-plan-time-1', '09:00'), Colors.white);
     expect(paceCellColor(tester, 'pace-plan-pace-1', '6:00'), Colors.white);
     expect(
-      paceCellColor(
-        tester,
-        'pace-overall-plan',
-        'Итоговый темп - 6:00',
-      ),
+      paceCellColor(tester, 'pace-overall-plan', 'Итоговый темп - 6:00'),
       Colors.white,
     );
     expect(
-      paceCellColor(
-        tester,
-        'pace-overall-plan-time',
-        'Итоговое время - 01:00',
-      ),
+      paceCellColor(tester, 'pace-overall-plan-time', 'Итоговое время - 01:00'),
       Colors.white,
     );
   });
@@ -2827,5 +2819,27 @@ void main() {
     );
 
     handle.dispose();
+  });
+
+  testWidgets('manual elevation entry is hidden from the release menu', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Горный режим').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('pace-settings-manual-elevation')),
+      findsNothing,
+    );
+    expect(find.text('Править высоты вручную'), findsNothing);
   });
 }

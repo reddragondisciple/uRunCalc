@@ -390,11 +390,35 @@ gh release create v2.0.0 build/app/outputs/flutter-apk/app-release.apk \
 Для публикации в Google Play вместо APK обычно собирают `flutter build appbundle`
 и загружают `build/app/outputs/bundle/release/app-release.aab`.
 
+## Подпись release-сборки Android
+
+Реквизиты ключа хранятся вне репозитория: `android/key.properties`, сам ключ —
+`android/key.jks` (оба в `.gitignore`). Шаблон — `android/key.properties.example`.
+
+Создать ключ и заполнить `key.properties`:
+
+```bash
+keytool -genkeypair -v -keystore android/key.jks -keyalg RSA \
+  -keysize 2048 -validity 10000 -alias uruncalc
+cp android/key.properties.example android/key.properties
+# вписать storePassword/keyPassword и оставить storeFile=../key.jks
+```
+
+`android/app/build.gradle.kts` подписывает release этим ключом, если файл
+`android/key.properties` существует. Без него release собирается отладочным
+ключом с предупреждением в логе — такой APK нельзя публиковать.
+
 ## Перед публикацией
 
-- Android `applicationId` уже заменён на `com.reddragondisciple.uruncalc`.
-  Для macOS/iOS при необходимости замените `com.example.calculatorApp` на свой
-  идентификатор.
-- Release-сборка сейчас подписана debug-ключом. Для публичного релиза создайте
-  keystore и настройте `signingConfig` в `android/app/build.gradle.kts`, иначе
-  APK не подойдёт для Google Play и обновлений с другим ключом.
+- Идентификатор приложения единый: `com.reddragondisciple.uruncalc`
+  (Android `applicationId`/`namespace`, iOS/macOS bundle ID, Linux
+  `APPLICATION_ID`).
+- Release подписывается ключом из `android/key.properties`; без него —
+  отладочным. Проверьте, что `key.jks` сохранён в надёжном месте: потеря ключа
+  не даст выпускать обновления.
+- `android:allowBackup="false"`: личные GPX-треки и таблицы не попадают в
+  облачный бэкап Android.
+- Лицензия — проприетарная, см. `LICENSE`.
+- Пункт «Править высоты вручную» скрыт до реализации ручных D+/D−.
+- Web-сборка работает, но импорт GPX на web недоступен (нужна файловая
+  система).

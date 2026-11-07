@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'gpx_parser.dart';
+
 /// Хранилище GPX-файлов треков. Интерфейс отделён от `path_provider`,
 /// чтобы логику можно было тестировать на временном каталоге.
 abstract class TrackFileStore {
@@ -21,10 +23,14 @@ abstract class TrackFileStore {
 
 /// Файловая реализация. Корень — каталог поддержки приложения (`tracks/`).
 class DirectoryTrackFileStore implements TrackFileStore {
-  DirectoryTrackFileStore(this.root);
+  DirectoryTrackFileStore(this.root, {this.maxBytes = gpxMaxBytes});
 
   /// Каталог `.../tracks`. Создаётся при первой записи.
   final Directory root;
+
+  /// Максимальный размер читаемого файла. Параметр нужен тестам; в проде —
+  /// общий лимит парсера GPX.
+  final int maxBytes;
 
   Directory _dir(String distanceKey) =>
       Directory('${root.path}${Platform.pathSeparator}$distanceKey');
@@ -53,6 +59,8 @@ class DirectoryTrackFileStore implements TrackFileStore {
   }) async {
     final file = _file(distanceKey, fileName);
     if (!await file.exists()) return null;
+    // Защита от подменённого/повреждённого файла на диске.
+    if (await file.length() > maxBytes) return null;
     return file.readAsString();
   }
 

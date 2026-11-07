@@ -4,7 +4,7 @@
 Основа — `docs/gpx-mountain-mode.md` (решения) и `docs/переписка при проектировании.txt`
 (обсуждение). При противоречии приоритет у переписки (она позднее).
 
-Текущее состояние: `flutter test` — 337 тестов проходят, `dart analyze lib test` — чисто.
+Текущее состояние: `flutter test` — 362 теста проходят, `dart analyze lib test` — чисто.
 
 Общая оценка выполнения: ~50% объёма.
 
@@ -69,7 +69,8 @@
 
 ### 1.7. Тесты
 
-306 тестов (`flutter test`), `dart analyze lib test` чист. Новые файлы: `gpx_parser_test`, `gpx_metrics_test`, `plan_math_test`, `mountain_store_test`, `checkpoint_matching_test`, `gpx_import_test`, `track_start_test`, `elevation_format_test`, `elevation_row_widget_test`, `elevation_landscape_widget_test`, `elevation_profile_test`, `elevation_chart_widget_test`, `elevation_cell_text_test`. Фикстуры — `test/fixtures/hill.gpx`, `test/fixtures/no_ele.gpx`. Реальные треки в корне проекта (GRUT, K40, VR100, WBU) тестами читаются напрямую.
+362 теста (`flutter test`), `dart analyze lib test` чист. Новые файлы: `gpx_parser_test`, `gpx_metrics_test`, `plan_math_test`, `mountain_store_test`, `checkpoint_matching_test`, `gpx_import_test`, `track_start_test`, `elevation_format_test`, `elevation_row_widget_test`, `elevation_landscape_widget_test`, `elevation_profile_test`, `elevation_chart_widget_test`, `elevation_cell_text_test`, `sprint2_mountain_test`,
+`track_file_limits_test`. Фикстуры — `test/fixtures/hill.gpx`, `test/fixtures/no_ele.gpx` и реальные треки `test/fixtures/GRUT100 - T100.gpx`, `MFU K40.gpx`, `VR100.gpx`, `WBU L120.gpx` (закоммичены, тесты читают их из `test/fixtures/`).
 
 ---
 
@@ -128,7 +129,8 @@
 - Поле «Стоянки» в диалоге — суммарное время: распределение см. решение 14.
 
 ### 3.3. Ручные D+/D− и «Править высоты вручную» (~3%)
-- Сейчас заглушка `_manualElevationFlow`.
+- Пункт меню скрыт в спринте 3 до реализации: заглушка удалена, чтобы релиз не
+  показывал неработающую функцию.
 - Ввод D+/D− по сегментам; `null` — брать из трека; без трека все сегменты должны иметь ручные значения.
 - Синтетический профиль сегмента (§5.2 `.md`): `L_up = L·A/(A+D)`, линейный подъём и спуск.
 - Поля `MountainData.manualAscent/manualDescent` уже есть.
@@ -169,9 +171,9 @@
 2. **`flutter test` переписывает `pubspec.lock`.** Проверять `git diff pubspec.lock` после каждого прогона.
 3. **Пункт меню «Темп сегмента» с длинной подписью** — переполнение исправлено через `Expanded`. При правках меню держать текст в `Expanded`.
 4. **Порядок `labels` и `rows`** в `_buildTable` должен совпадать. Любой новый ряд — обновить `portraitLabels`/`compactLabels` и проверить границы (источник `RangeError`).
-5. **Кэш трека** (`_loadedTrack`) сбрасывается при `_loadCurrentTable`, смене слота и импорте; при удалении дистанции не сбрасывается явно — проверить.
-6. **`_ensureTrackLoaded` асинхронный:** до загрузки ряд показывает прочерки. Нужен виджет-тест на состояние «трек загружается».
-7. **Файлы треков в корне проекта** (`GRUT100 - T100.gpx` и др.) не отслеживаются git. Тесты их читают — решить, коммитить ли или переносить в `test/fixtures/`.
+5. **Кэш трека** (`_loadedTrack`) сбрасывается при `_loadCurrentTable`, смене слота и импорте. Гонка «смена дистанции во время чтения» устранена: запрос ставится в очередь, после `await` ключ сверяется с текущим (`sprint2_mountain_test`).
+6. **`_ensureTrackLoaded` асинхронный:** во время чтения ряд показывает прочерки; после смены дистанции/слота загружается актуальный трек. Покрыто `sprint2_mountain_test`.
+7. **Файлы треков** перенесены в `test/fixtures/` и закоммичены; корневые `*.gpx` добавлены в `.gitignore`.
 8. **`dart:io` и `path_provider`** — только мобильные и десктоп; web не поддерживается (принято).
 9. **Парсинг GPX синхронный** (в UI-потоке). В §9 ТЗ — `Isolate`/`compute`. Не сделано; на треках 2000–2400 точек подвисаний не наблюдалось, на 100k+ будет проблема.
 10. **Карта: `Path` не кэшируется;** перерисовка на каждый кадр жеста. Для 1000 точек достаточно; проверить на устройстве.
@@ -186,7 +188,7 @@
 
 ```bash
 cd /home/alaric/calculator_app
-flutter test                 # ожидается: All tests passed (347)
+flutter test                 # ожидается: All tests passed (362)
 dart analyze lib test        # ожидается: No issues found!
 ```
 
@@ -201,8 +203,10 @@ dart analyze lib test        # ожидается: No issues found!
 - Портрет: темп сегмента перед подъёмом; стоянки с подписью в первой клетке; итоги плана одной строкой (Итоговый темп | Итоговое время); итог подъёма в метрах; заметки вода/еда 10.5.
 - Первая клетка ряда плана-темпа: `↓` / `pace` (две строки, обе ориентации).
 - Переименовано: «Итоговый плановый темп» → «Итоговый темп», «Итоговое плановое время» → «Итоговое время».
-- Тесты: 347 проходят; `dart analyze lib test` — чисто.
+- Тесты: 362 проходят; `dart analyze lib test` — чисто.
+- Спринт 2 (гонки загрузки трека, включение горного режима, ручная правка плана, очистка треков при удалении мероприятия, защита раннего ввода) — закрыт, см. `docs/work-plan.md`.
+- Спринт 3 (release-подпись, единый идентификатор, `allowBackup`, `LICENSE`, безопасное чтение GPX, поведение на web, скрытый пункт ручных высот) — закрыт, см. `docs/work-plan.md`.
 - Ручная проверка на устройстве: импорт, ряд подъёма, стоянки, ряд итогов — проверено пользователем; остаётся проверка импорта через file_selector на iOS/Android (шаг 8).
 - Открыто: решение по вопросу 0 (вариант B темпа со стоянками) — отложено; карта высот как ряд — в §11.1 ТЗ.
-- Треки `*.gpx` в корне не коммитятся (локальные данные); тесты, которые их читают, — см. пункт 7 в §4.
+- Треки `*.gpx` в корне не коммитятся (локальные данные и `/*.gpx` в `.gitignore`); тесты читают закоммиченные фикстуры из `test/fixtures/`.
 

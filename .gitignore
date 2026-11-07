@@ -1,3 +1,6 @@
+# Личные GPX-треки в корне не коммитим: тесты используют test/fixtures/*.gpx
+/*.gpx
+
 # Miscellaneous
 *.class
 *.log
@@ -43,6 +46,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Release-подпись Android: ключи и пароли не коммитим
+/android/key.properties
+/android/key.jks
+/android/*.jks
+/android/*.keystore
+*.jks
+*.keystore
 
 # Widget Preview related
 .widget_preview/

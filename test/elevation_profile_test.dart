@@ -80,7 +80,7 @@ void main() {
     test(
       'реальный GRUT: профиль от 0 до финиша, максимум в пределах трека',
       () {
-        final file = File('GRUT100 - T100.gpx');
+        final file = File('test/fixtures/GRUT100 - T100.gpx');
         if (!file.existsSync()) return;
         final parsed = _parsedFrom(file.path);
         final profile = buildElevationProfile(parsed, maxPoints: 800);
