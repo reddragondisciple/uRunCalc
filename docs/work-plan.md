@@ -276,22 +276,68 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
 
 ---
 
+## Журнал сессии 2026-11-07
+
+Базовая точка на входе: `master` @ `a3a2690`, 362 теста, analyze чист, но
+изменения спринтов 1–3 лежали незакоммиченными.
+
+**Сделано за сессию:**
+
+1. **Коммит `0365230` — спринты 1–3.** Зафиксированы зелёный CI, фикстуры,
+   горный режим, release-подпись, `allowBackup=false`, `LICENSE`, лимит 50 МБ.
+   Ключи (`android/key.jks`, `key.properties`) и корневые `*.gpx` остались
+   вне git.
+2. **Коммит `c2f3d12` — декомпозиция.**
+   - `main.dart` 1235 → 32 строки; калькулятор → `calculator_page.dart`.
+   - `InfoView`, `ExpressionView`, `TimeView`, `PaceView` — самостоятельные
+     библиотеки, `part`-связность с `main.dart` убрана.
+   - Форматирование → `core/value_format.dart`.
+   - `pace_view.dart` 5055 → ~1090 строк; логика в part-файлах
+     `pace_mountain_part`, `pace_plan_part`, `pace_events_part`,
+     `pace_table_part`.
+3. **Коммит `1cfebf3` — UI-виджеты.**
+   - `CalculatorKeypad`, `CalculatorDisplay`, `PaceKeyboard`, `PaceInteractiveCell`,
+     `PaceWrappedTextContent`, `waterSpans`.
+   - `calculator_page.dart` ~1190 → ~1015, `pace_table_part.dart` ~1790 → ~1609.
+   - `test/ui_widgets_test.dart` — 5 новых тестов.
+
+**Состояние на конец сессии:**
+
+- 367 тестов проходят, `flutter analyze` чист, форматирование чистое;
+- рабочее дерево чистое, все три коммита в `master`;
+- документация: этот файл и `docs/gpx-mountain-mode-progress.md` (367 тестов).
+
+**Что осталось по спринту 4:**
+
+- пункт декомпозиции закрыт частично: UI-виджеты вынесены, но
+  `_PaceViewState` всё ещё использует extensions в part-файлах, а
+  `calculator_page.dart` (~1015) и `pace_table_part.dart` (~1609) остаются
+  крупными. Дальнейшее дробление — по мере необходимости;
+- локализация `flutter_localizations` + `intl`;
+- покрытие UI-тестами (`pace_gpx_import_ui.dart`, `info_view.dart`,
+  `pace_settings_menu.dart`);
+- парсинг GPX в изоляте, кэш профиля высот;
+- обновление `xml` 7.0.1 → 7.1.0.
+
+---
+
 ## Как начать следующую сессию
 
-1. Прочитать этот файл, раздел «Спринт 3».
-2. Убедиться, что спринты 1–2 зелёные:
+1. Прочитать этот файл: «Журнал сессии 2026-11-07» и раздел «Спринт 4».
+2. Убедиться, что спринты 1–3 и текущие правки зелёные:
 
    ```bash
    git status
    dart format --output=none --set-exit-if-changed lib test
-   flutter analyze && flutter test
+   flutter analyze && flutter test   # ожидается 367 тестов
    ```
 
-3. Спринты 1–3 закрыты, в спринте 4 сделан первый пункт (декомпозиция
-   `pace_view.dart`/`main.dart`). Следующие пункты: локализация, покрытие
-   UI-тестами, изолят для GPX, обновление `xml`.
+3. Спринты 1–3 закрыты. В спринте 4 сделан пункт декомпозиции (частично, см.
+   журнал). Следующие пункты: локализация, покрытие UI-тестами, изолят для GPX,
+   обновление `xml`.
 4. После каждого пункта отмечать `[x]` здесь и в
-   `docs/gpx-mountain-mode-progress.md`, если пункт относится к горному режиму.
+   `docs/gpx-mountain-mode-progress.md`, если пункт относится к горному режиму;
+   результаты сессии дописывать в «Журнал сессии».
 
 ## Definition of Done для любого пункта
 
