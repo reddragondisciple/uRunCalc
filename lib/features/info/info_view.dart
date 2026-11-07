@@ -1,7 +1,11 @@
-part of '../../main.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-class _InfoView extends StatelessWidget {
-  const _InfoView();
+import '../../core/app_strings.dart';
+import '../../theme/app_colors.dart';
+
+class InfoView extends StatelessWidget {
+  const InfoView({super.key});
 
   static const String _url = 'https://github.com/reddragondisciple/uRunCalc';
 

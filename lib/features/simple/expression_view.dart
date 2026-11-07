@@ -1,7 +1,11 @@
-part of '../../main.dart';
+import 'package:flutter/material.dart';
 
-class _ExpressionView extends StatelessWidget {
-  const _ExpressionView({
+import '../../core/rational.dart';
+import '../../core/value_format.dart';
+
+class ExpressionView extends StatelessWidget {
+  const ExpressionView({
+    super.key,
     required this.expression,
     this.fontSize = 32,
     this.fontWeight = FontWeight.w300,
@@ -27,8 +31,8 @@ class _ExpressionView extends StatelessWidget {
       );
     } catch (_) {
       return Text(
-        _displayText(expression),
-        style: _textStyle(fontSize, Colors.white, fontWeight),
+        displayText(expression),
+        style: expressionTextStyle(fontSize, Colors.white, fontWeight),
       );
     }
   }
@@ -375,14 +379,17 @@ Widget _renderNode(
   if (node is _TextNode) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: node.isOperator ? 3 : 0),
-      child: Text(node.text, style: _textStyle(fontSize, color, fontWeight)),
+      child: Text(
+        node.text,
+        style: expressionTextStyle(fontSize, color, fontWeight),
+      ),
     );
   }
 
   if (node is _NumberNode) {
     return Text(
-      _groupDigits(node.text),
-      style: _textStyle(fontSize, color, fontWeight),
+      groupDigits(node.text),
+      style: expressionTextStyle(fontSize, color, fontWeight),
     );
   }
 
@@ -435,12 +442,12 @@ Widget _renderNode(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('(', style: _textStyle(fontSize, color, fontWeight)),
+        Text('(', style: expressionTextStyle(fontSize, color, fontWeight)),
         ...node.children.map(
           (child) => _renderNode(child, fontSize, color, fontWeight),
         ),
         if (node.closed)
-          Text(')', style: _textStyle(fontSize, color, fontWeight)),
+          Text(')', style: expressionTextStyle(fontSize, color, fontWeight)),
       ],
     );
   }
@@ -450,13 +457,13 @@ Widget _renderNode(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('√', style: _textStyle(fontSize, color, fontWeight)),
-        Text('(', style: _textStyle(fontSize, color, fontWeight)),
+        Text('√', style: expressionTextStyle(fontSize, color, fontWeight)),
+        Text('(', style: expressionTextStyle(fontSize, color, fontWeight)),
         ...node.children.map(
           (child) => _renderNode(child, fontSize, color, fontWeight),
         ),
         if (node.closed)
-          Text(')', style: _textStyle(fontSize, color, fontWeight)),
+          Text(')', style: expressionTextStyle(fontSize, color, fontWeight)),
       ],
     );
   }
@@ -468,13 +475,13 @@ Widget _renderNode(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(name, style: _textStyle(fontSize, color, fontWeight)),
-        Text('(', style: _textStyle(fontSize, color, fontWeight)),
+        Text(name, style: expressionTextStyle(fontSize, color, fontWeight)),
+        Text('(', style: expressionTextStyle(fontSize, color, fontWeight)),
         ...node.children.map(
           (child) => _renderNode(child, fontSize, color, fontWeight),
         ),
         if (node.closed)
-          Text(')', style: _textStyle(fontSize, color, fontWeight)),
+          Text(')', style: expressionTextStyle(fontSize, color, fontWeight)),
       ],
     );
   }
@@ -487,10 +494,10 @@ Widget _renderNode(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (baseNeedsParentheses)
-          Text('(', style: _textStyle(fontSize, color, fontWeight)),
+          Text('(', style: expressionTextStyle(fontSize, color, fontWeight)),
         _renderNode(node.base, fontSize, color, fontWeight),
         if (baseNeedsParentheses)
-          Text(')', style: _textStyle(fontSize, color, fontWeight)),
+          Text(')', style: expressionTextStyle(fontSize, color, fontWeight)),
         Transform.translate(
           offset: Offset(0, -fontSize * 0.3),
           child: _renderNode(node.exponent, fontSize * 0.7, color, fontWeight),
@@ -502,7 +509,7 @@ Widget _renderNode(
   return const SizedBox.shrink();
 }
 
-TextStyle _textStyle(
+TextStyle expressionTextStyle(
   double fontSize,
   Color color, [
   FontWeight fontWeight = FontWeight.w300,

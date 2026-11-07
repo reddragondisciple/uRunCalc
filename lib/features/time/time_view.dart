@@ -1,4 +1,10 @@
-part of '../../main.dart';
+import 'package:flutter/material.dart';
+
+import '../../core/app_strings.dart';
+import '../../core/key_labels.dart';
+import '../../core/time_math.dart';
+import '../../theme/app_colors.dart';
+import 'time_calculator.dart';
 
 enum _TimeTab { difference, addSubtract, converter }
 
@@ -11,14 +17,14 @@ class _TimeFocus {
   final _TimeField field;
 }
 
-class _TimeView extends StatefulWidget {
-  const _TimeView();
+class TimeView extends StatefulWidget {
+  const TimeView({super.key});
 
   @override
-  State<_TimeView> createState() => _TimeViewState();
+  State<TimeView> createState() => _TimeViewState();
 }
 
-class _TimeViewState extends State<_TimeView> {
+class _TimeViewState extends State<TimeView> {
   _TimeTab _tab = _TimeTab.difference;
   bool _subtract = false;
   _TimeFocus _focus = const _TimeFocus(0, _TimeField.date);
@@ -719,83 +725,3 @@ class _TimeViewState extends State<_TimeView> {
     return code >= 0x30 && code <= 0x39;
   }
 }
-
-final RegExp _exactValuePattern = RegExp(r'@(-?\d+):(\d+);');
-final RegExp _numberPattern = RegExp(r'\d+(?:\.\d*)?|\.\d+');
-final RegExp _digitGroupPattern = RegExp(r'\B(?=(\d{3})+(?!\d))');
-
-/// Текстовая версия выражения: дроби записываются как a/b, числа группируются.
-String _displayText(String value) {
-  var text = value.replaceAllMapped(_exactValuePattern, (match) {
-    final numerator = BigInt.parse(match.group(1)!);
-    final denominator = BigInt.parse(match.group(2)!);
-    final rational = Rational(numerator, denominator);
-
-    if (rational.isDisplayableFraction) {
-      return rational.toFractionString();
-    }
-
-    return rational.toDisplayString();
-  });
-
-  text = text.replaceAll('sqrt(', '√(');
-  text = text.replaceAll('inv(', '1/(');
-  text = text.replaceAll('*', '×');
-  text = text.replaceAll('-', '−');
-
-  return _groupDigits(text);
-}
-
-String _groupDigits(String text) {
-  return text.replaceAllMapped(_numberPattern, (match) {
-    final number = match.group(0)!;
-    final dotIndex = number.indexOf('.');
-    final integerPart = dotIndex == -1 ? number : number.substring(0, dotIndex);
-    final decimalPart = dotIndex == -1 ? '' : number.substring(dotIndex);
-
-    final groupedInteger = integerPart.replaceAllMapped(
-      _digitGroupPattern,
-      (_) => '\u2009',
-    );
-
-    return '$groupedInteger$decimalPart';
-  });
-}
-
-String _formatDecimal(String text) {
-  final formatted = text.replaceAll('-', '−');
-  if (formatted.contains('e')) return formatted;
-  return _groupDigits(formatted);
-}
-
-String _decimalSymbol(Rational value, bool approximate) {
-  if (!value.decimalDisplayIsExact) return '≈';
-  if (approximate && !value.isInteger) return '≈';
-  return '=';
-}
-
-String _historyText(String expression, Rational value, bool approximate) {
-  final left = _displayText(expression);
-  final decimal = _formatDecimal(value.toDisplayString());
-  final symbol = _decimalSymbol(value, approximate);
-  final showsFraction = !approximate && value.isDisplayableFraction;
-
-  if (showsFraction) {
-    final fraction = value.toFractionString();
-    if (left == fraction) {
-      return '$left $symbol $decimal';
-    }
-    if (left == decimal) {
-      return '$left = $fraction';
-    }
-    return '$left = $fraction $symbol $decimal';
-  }
-
-  if (value.isInteger && symbol == '=') {
-    return '$left = $decimal';
-  }
-
-  return '$left $symbol $decimal';
-}
-
-/// Экран с информацией о проекте и ссылкой на автора.

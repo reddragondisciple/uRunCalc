@@ -239,10 +239,26 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
 
 ## Спринт 4. Качество и поддержка (после релиза)
 
-**Статус: не начат.**
+**Статус: в работе (2026-11-07).**
 
-- [ ] Декомпозиция `lib/features/pace/pace_view.dart` (4917 строк) и
+- [x] Декомпозиция `lib/features/pace/pace_view.dart` (4917 строк) и
       `lib/main.dart` (1235 строк); сократить `part`-связность.
+
+  **Результат (2026-11-07):**
+  - `lib/main.dart` — 32 строки: только `main`, `CalculatorApp` и реэкспорт
+    debug-хуков. Экран калькулятора вынесен в самостоятельную библиотеку
+    `lib/features/calculator/calculator_page.dart` (~1190 строк).
+  - `InfoView`, `ExpressionView`, `TimeView`, `PaceView` больше не являются
+    `part`-файлами `main.dart` — это отдельные библиотеки со своими импортами.
+  - Общие помощники форматирования (`displayText`, `groupDigits`,
+    `formatDecimal`, `decimalSymbol`, `historyText`) вынесены в
+    `lib/core/value_format.dart`, `expressionTextStyle` — публичный стиль в
+    `expression_view.dart`.
+  - `lib/features/pace/pace_view.dart` уменьшен с 5055 до ~1060 строк; логика
+    разложена по part-файлам библиотеки (расширения на `_PaceViewState`):
+    `pace_mountain_part.dart` (~490), `pace_plan_part.dart` (~910),
+    `pace_events_part.dart` (~830), `pace_table_part.dart` (~1790).
+  - Поведение не менялось: `flutter analyze` чист, все 362 теста проходят.
 - [ ] Локализация: `flutter_localizations` + `intl`, перевести системные строки
       Material.
 - [ ] Поднять покрытие UI: `pace_gpx_import_ui.dart` (29.6%),
@@ -264,8 +280,9 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
    flutter analyze && flutter test
    ```
 
-3. Спринт 3 закрыт. Начать со **спринта 4**: декомпозиция `pace_view.dart` и
-   `main.dart`, локализация, покрытие UI-тестами, изолят для GPX.
+3. Спринты 1–3 закрыты, в спринте 4 сделан первый пункт (декомпозиция
+   `pace_view.dart`/`main.dart`). Следующие пункты: локализация, покрытие
+   UI-тестами, изолят для GPX, обновление `xml`.
 4. После каждого пункта отмечать `[x]` здесь и в
    `docs/gpx-mountain-mode-progress.md`, если пункт относится к горному режиму.
 
