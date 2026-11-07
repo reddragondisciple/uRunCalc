@@ -266,6 +266,22 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
   - Новый `test/ui_widgets_test.dart` (5 тестов) проверяет новые виджеты
     отдельно от экранов.
   - Поведение не менялось: `flutter analyze` чист, все 367 тестов проходят.
+
+  **Продолжение декомпозиции (2026-11-07):**
+  - `pace_view.dart` 1092 → 543 строки: снимок/загрузка/сброс таблицы
+    вынесены в `pace_table_state_part.dart` (~185), вычисляемые значения,
+    форматирование и подсветки — в `pace_values_part.dart` (~375).
+  - `pace_table_part.dart` 1609 → 912: верхний калькулятор Pace —
+    `pace_calculator_part.dart` (~267), построение клеток и рядов —
+    `pace_table_cells_part.dart` (~436).
+  - `pace_plan_part.dart` 913 → 452: ввод с клавиатуры, фокус, прокрутка к
+    активной ячейке и буферы — `pace_input_part.dart` (~464).
+  - `calculator_page.dart` 1015 → 316: логика выражения и клавиатурных
+    событий — `calculator_input_part.dart` (~639, extension с обёрткой
+    `_rebuild` над защищённым `setState`); выбор режима — самостоятельные
+    `calculator_mode.dart` и `calculator_mode_bar.dart`.
+  - Новый виджет-тест `CalculatorModeBar` в `test/ui_widgets_test.dart`.
+    Всего 368 тестов, `flutter analyze` чист.
 - [ ] Локализация: `flutter_localizations` + `intl`, перевести системные строки
       Material.
 - [ ] Поднять покрытие UI: `pace_gpx_import_ui.dart` (29.6%),
@@ -300,19 +316,28 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
      `PaceWrappedTextContent`, `waterSpans`.
    - `calculator_page.dart` ~1190 → ~1015, `pace_table_part.dart` ~1790 → ~1609.
    - `test/ui_widgets_test.dart` — 5 новых тестов.
+4. **Продолжение декомпозиции (без изменения поведения).**
+   - `pace_view.dart` 1092 → 543: `pace_table_state_part.dart` (снимок,
+     загрузка, сброс, изменение размера таблицы), `pace_values_part.dart`
+     (вычисляемые значения, форматирование, подсветки, дни).
+   - `pace_table_part.dart` 1609 → 912: `pace_calculator_part.dart` (верхний
+     калькулятор Pace), `pace_table_cells_part.dart` (клетки и ряды).
+   - `pace_plan_part.dart` 913 → 452: `pace_input_part.dart` (фокус, ввод,
+     буферы, прокрутка).
+   - `calculator_page.dart` 1015 → 316: `calculator_input_part.dart` (ввод
+     выражения), `calculator_mode.dart` + `calculator_mode_bar.dart`.
+   - `test/ui_widgets_test.dart` — тест `CalculatorModeBar`.
 
 **Состояние на конец сессии:**
 
-- 367 тестов проходят, `flutter analyze` чист, форматирование чистое;
-- рабочее дерево чистое, все три коммита в `master`;
-- документация: этот файл и `docs/gpx-mountain-mode-progress.md` (367 тестов).
+- 368 тестов проходят, `flutter analyze` чист, форматирование чистое;
+- рабочее дерево содержит незакоммиченные изменения декомпозиции;
+- документация: этот файл и `docs/gpx-mountain-mode-progress.md` (368 тестов).
 
 **Что осталось по спринту 4:**
 
-- пункт декомпозиции закрыт частично: UI-виджеты вынесены, но
-  `_PaceViewState` всё ещё использует extensions в part-файлах, а
-  `calculator_page.dart` (~1015) и `pace_table_part.dart` (~1609) остаются
-  крупными. Дальнейшее дробление — по мере необходимости;
+- декомпозиция закрыта: крупнейшие файлы — `pace_table_part.dart` (912) и
+  `pace_events_part.dart` (833); дальнейшее дробление — только по мере роста;
 - локализация `flutter_localizations` + `intl`;
 - покрытие UI-тестами (`pace_gpx_import_ui.dart`, `info_view.dart`,
   `pace_settings_menu.dart`);
@@ -329,12 +354,12 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
    ```bash
    git status
    dart format --output=none --set-exit-if-changed lib test
-   flutter analyze && flutter test   # ожидается 367 тестов
+   flutter analyze && flutter test   # ожидается 368 тестов
    ```
 
-3. Спринты 1–3 закрыты. В спринте 4 сделан пункт декомпозиции (частично, см.
-   журнал). Следующие пункты: локализация, покрытие UI-тестами, изолят для GPX,
-   обновление `xml`.
+3. Спринты 1–3 закрыты. В спринте 4 декомпозиция закрыта (см. журнал),
+   UI-виджеты и part-файлы Pace/Calculator разделены. Следующие пункты:
+   локализация, покрытие UI-тестами, изолят для GPX, обновление `xml`.
 4. После каждого пункта отмечать `[x]` здесь и в
    `docs/gpx-mountain-mode-progress.md`, если пункт относится к горному режиму;
    результаты сессии дописывать в «Журнал сессии».

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ultra_run_calc/features/calculator/calculator_display.dart';
 import 'package:ultra_run_calc/features/calculator/calculator_keypad.dart';
+import 'package:ultra_run_calc/features/calculator/calculator_mode.dart';
+import 'package:ultra_run_calc/features/calculator/calculator_mode_bar.dart';
 import 'package:ultra_run_calc/features/pace/pace_cells.dart';
 import 'package:ultra_run_calc/features/pace/pace_keyboard.dart';
 
@@ -47,6 +49,31 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('history-0')));
 
     expect(selected, 1);
+  });
+
+  testWidgets('mode bar shows current mode and reports a new one', (
+    tester,
+  ) async {
+    CalculatorMode? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CalculatorModeBar(
+            current: CalculatorMode.ultra,
+            onSelected: (mode) => selected = mode,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Ultra'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mode-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pace'));
+    await tester.pumpAndSettle();
+
+    expect(selected, CalculatorMode.pace);
   });
 
   testWidgets('pace keyboard reports key and clear actions', (tester) async {
