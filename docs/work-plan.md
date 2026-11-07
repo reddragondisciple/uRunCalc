@@ -254,11 +254,18 @@ flutter test test/sprint2_mountain_test.dart test/pace_state_controller_test.dar
     `formatDecimal`, `decimalSymbol`, `historyText`) вынесены в
     `lib/core/value_format.dart`, `expressionTextStyle` — публичный стиль в
     `expression_view.dart`.
-  - `lib/features/pace/pace_view.dart` уменьшен с 5055 до ~1060 строк; логика
+  - `lib/features/pace/pace_view.dart` уменьшен с 5055 до ~1090 строк; логика
     разложена по part-файлам библиотеки (расширения на `_PaceViewState`):
     `pace_mountain_part.dart` (~490), `pace_plan_part.dart` (~910),
-    `pace_events_part.dart` (~830), `pace_table_part.dart` (~1790).
-  - Поведение не менялось: `flutter analyze` чист, все 362 теста проходят.
+    `pace_events_part.dart` (~830), `pace_table_part.dart` (~1610).
+  - UI вынесен в самостоятельные виджеты без доступа к состоянию экрана:
+    `calculator_keypad.dart` (клавиатура), `calculator_display.dart`
+    (история/ввод/предпросмотр), `pace_keyboard.dart`, `pace_cells.dart`
+    (`PaceInteractiveCell`, `PaceWrappedTextContent`, `waterSpans`).
+  - `calculator_page.dart` уменьшен с ~1190 до ~1015 строк.
+  - Новый `test/ui_widgets_test.dart` (5 тестов) проверяет новые виджеты
+    отдельно от экранов.
+  - Поведение не менялось: `flutter analyze` чист, все 367 тестов проходят.
 - [ ] Локализация: `flutter_localizations` + `intl`, перевести системные строки
       Material.
 - [ ] Поднять покрытие UI: `pace_gpx_import_ui.dart` (29.6%),

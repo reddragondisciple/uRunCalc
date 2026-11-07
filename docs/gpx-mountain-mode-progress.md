@@ -4,7 +4,7 @@
 Основа — `docs/gpx-mountain-mode.md` (решения) и `docs/переписка при проектировании.txt`
 (обсуждение). При противоречии приоритет у переписки (она позднее).
 
-Текущее состояние: `flutter test` — 362 теста проходят, `dart analyze lib test` — чисто.
+Текущее состояние: `flutter test` — 367 тестов проходят, `dart analyze lib test` — чисто.
 
 Общая оценка выполнения: ~50% объёма.
 
@@ -69,8 +69,8 @@
 
 ### 1.7. Тесты
 
-362 теста (`flutter test`), `dart analyze lib test` чист. Новые файлы: `gpx_parser_test`, `gpx_metrics_test`, `plan_math_test`, `mountain_store_test`, `checkpoint_matching_test`, `gpx_import_test`, `track_start_test`, `elevation_format_test`, `elevation_row_widget_test`, `elevation_landscape_widget_test`, `elevation_profile_test`, `elevation_chart_widget_test`, `elevation_cell_text_test`, `sprint2_mountain_test`,
-`track_file_limits_test`. Фикстуры — `test/fixtures/hill.gpx`, `test/fixtures/no_ele.gpx` и реальные треки `test/fixtures/GRUT100 - T100.gpx`, `MFU K40.gpx`, `VR100.gpx`, `WBU L120.gpx` (закоммичены, тесты читают их из `test/fixtures/`).
+367 тестов (`flutter test`), `dart analyze lib test` чист. Новые файлы: `gpx_parser_test`, `gpx_metrics_test`, `plan_math_test`, `mountain_store_test`, `checkpoint_matching_test`, `gpx_import_test`, `track_start_test`, `elevation_format_test`, `elevation_row_widget_test`, `elevation_landscape_widget_test`, `elevation_profile_test`, `elevation_chart_widget_test`, `elevation_cell_text_test`, `sprint2_mountain_test`,
+`track_file_limits_test`, `ui_widgets_test`. Фикстуры — `test/fixtures/hill.gpx`, `test/fixtures/no_ele.gpx` и реальные треки `test/fixtures/GRUT100 - T100.gpx`, `MFU K40.gpx`, `VR100.gpx`, `WBU L120.gpx` (закоммичены, тесты читают их из `test/fixtures/`).
 
 ---
 
@@ -188,7 +188,7 @@
 
 ```bash
 cd /home/alaric/calculator_app
-flutter test                 # ожидается: All tests passed (362)
+flutter test                 # ожидается: All tests passed (367)
 dart analyze lib test        # ожидается: No issues found!
 ```
 
@@ -203,7 +203,7 @@ dart analyze lib test        # ожидается: No issues found!
 - Портрет: темп сегмента перед подъёмом; стоянки с подписью в первой клетке; итоги плана одной строкой (Итоговый темп | Итоговое время); итог подъёма в метрах; заметки вода/еда 10.5.
 - Первая клетка ряда плана-темпа: `↓` / `pace` (две строки, обе ориентации).
 - Переименовано: «Итоговый плановый темп» → «Итоговый темп», «Итоговое плановое время» → «Итоговое время».
-- Тесты: 362 проходят; `dart analyze lib test` — чисто.
+- Тесты: 367 проходят; `dart analyze lib test` — чисто.
 - Спринт 2 (гонки загрузки трека, включение горного режима, ручная правка плана, очистка треков при удалении мероприятия, защита раннего ввода) — закрыт, см. `docs/work-plan.md`.
 - Спринт 3 (release-подпись, единый идентификатор, `allowBackup`, `LICENSE`, безопасное чтение GPX, поведение на web, скрытый пункт ручных высот) — закрыт, см. `docs/work-plan.md`.
 - Ручная проверка на устройстве: импорт, ряд подъёма, стоянки, ряд итогов — проверено пользователем; остаётся проверка импорта через file_selector на iOS/Android (шаг 8).

@@ -1535,52 +1535,13 @@ extension _PaceTablePart on _PaceViewState {
     required double height,
     double fontSize = 11.5,
   }) {
-    final maxLines = math.max(1, (height / 13).floor());
-    return Container(
-      key: ValueKey(keySuffix),
-      alignment: Alignment.topLeft,
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-      child: Text.rich(
-        TextSpan(
-          children: keyPrefix == 'pace-water'
-              ? _waterSpans(value)
-              : [TextSpan(text: value)],
-        ),
-        maxLines: maxLines,
-        overflow: TextOverflow.clip,
-        style: TextStyle(color: Colors.white, fontSize: fontSize, height: 1.15),
-      ),
+    return PaceWrappedTextContent(
+      value: value,
+      cellKeySuffix: keySuffix,
+      height: height,
+      fontSize: fontSize,
+      water: keyPrefix == 'pace-water',
     );
-  }
-
-  List<InlineSpan> _waterSpans(String value) {
-    final spans = <InlineSpan>[];
-    for (final match in RegExp(r'\S+|\s+').allMatches(value)) {
-      final part = match.group(0)!;
-      if (part.trim().isEmpty) {
-        spans.add(TextSpan(text: part));
-        continue;
-      }
-
-      final normalized = part.toLowerCase().replaceAll(
-        RegExp(r'[^а-яёa-z0-9]'),
-        '',
-      );
-      final color = switch (normalized) {
-        'кола' => const Color(0xFFD2A679),
-        'вода' => const Color(0xFF64B5F6),
-        'пиво' => const Color(0xFFFFEB3B),
-        'ягер' => const Color(0xFF81C784),
-        _ => Colors.white,
-      };
-      spans.add(
-        TextSpan(
-          text: part,
-          style: TextStyle(color: color),
-        ),
-      );
-    }
-    return spans;
   }
 
   Widget _interactiveCell({
@@ -1603,169 +1564,27 @@ extension _PaceTablePart on _PaceViewState {
     String? semanticHint,
     List<TextSpan>? spans,
   }) {
-    final defaultBorder = editable
-        ? Colors.grey.shade700
-        : Colors.grey.shade900;
-    final borderColor = focused
-        ? AppColors.focus
-        : boldBorder
-        ? Colors.grey.shade500
-        : dayBorder ?? defaultBorder;
-    final borderWidth = focused ? 1.5 : (boldBorder ? 3.0 : 1.0);
-
-    final cell = InkWell(
-      key: ValueKey(key),
+    return PaceInteractiveCell(
+      cellKey: key,
+      text: text,
+      focusAnchorKey: _focusAnchorKey,
+      focused: focused,
+      editable: editable,
+      placeholder: placeholder,
+      result: result,
+      bold: bold,
+      cursorFirst: cursorFirst,
+      cursorActive: widget.active,
+      maxLines: maxLines,
+      fontSize: fontSize,
+      color: color,
+      dayBorder: dayBorder,
+      boldBorder: boldBorder,
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(
-          color: result ? AppColors.surfaceRaised : AppColors.background,
-          border: Border.all(color: borderColor, width: borderWidth),
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (focused && cursorFirst) _cursor(),
-              if (spans != null && !placeholder)
-                Text.rich(
-                  TextSpan(
-                    children: spans,
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: bold ? FontWeight.bold : null,
-                    ),
-                  ),
-                  maxLines: maxLines,
-                  textAlign: TextAlign.center,
-                )
-              else
-                Text(
-                  text,
-                  maxLines: maxLines,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: placeholder
-                        ? Colors.grey.shade600
-                        : color ?? (result ? AppColors.result : Colors.white),
-                    fontSize: fontSize,
-                    fontWeight: bold ? FontWeight.bold : null,
-                  ),
-                ),
-              if (focused && !cursorFirst) _cursor(),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final content = focused
-        ? KeyedSubtree(key: _focusAnchorKey, child: cell)
-        : cell;
-    if (semanticLabel == null && semanticHint == null) return content;
-
-    // Цвет клетки передаёт статус плана, но скринридер его не видит — поэтому
-    // для таких клеток задаём текстовую подпись и подсказку.
-    return Semantics(
-      label: semanticLabel,
-      hint: semanticHint,
-      button: onTap != null,
-      excludeSemantics: true,
-      onTap: onTap,
-      onLongPress: onLongPress,
-      child: content,
-    );
-  }
-
-  Widget _buildKeyboard({required bool compact, bool tableLayout = false}) {
-    final extraKey = _isUltra ? AppStrings.ok : '00';
-    if (tableLayout) {
-      return Container(
-        height: compact ? null : 180,
-        padding: EdgeInsets.fromLTRB(4, 4, 4, compact ? 4 : 6),
-        color: AppColors.surface,
-        child: Column(
-          children: [
-            _keyRow(['.', AppStrings.reset, '⌫'], compact),
-            _keyRow(['1', '2', '3'], compact),
-            _keyRow(['4', '5', '6'], compact),
-            _keyRow(['7', '8', '9'], compact),
-            Expanded(
-              child: Row(
-                children: [
-                  Expanded(flex: 2, child: _padKey('0', compact)),
-                  Expanded(flex: 1, child: _padKey(extraKey, compact)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      height: compact ? null : 180,
-      padding: EdgeInsets.fromLTRB(4, 4, 4, compact ? 4 : 6),
-      color: AppColors.surface,
-      child: Column(
-        children: [
-          _keyRow(['1', '2', '3', '⌫'], compact),
-          _keyRow(['4', '5', '6', '.'], compact),
-          _keyRow(['7', '8', '9', AppStrings.reset], compact),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(flex: 2, child: _padKey('0', compact)),
-                Expanded(flex: 2, child: _padKey(extraKey, compact)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _keyRow(List<String> keys, bool compact) {
-    return Expanded(
-      child: Row(
-        children: [
-          for (final key in keys) Expanded(child: _padKey(key, compact)),
-        ],
-      ),
-    );
-  }
-
-  Widget _padKey(String key, bool compact) {
-    return Padding(
-      padding: const EdgeInsets.all(1.5),
-      child: Semantics(
-        button: true,
-        label: semanticKeyLabel(key),
-        hint: key == '⌫' ? AppStrings.longPressClear : null,
-        onTap: () => _onPadKey(key),
-        onLongPress: key == '⌫' ? _clearActive : null,
-        excludeSemantics: true,
-        child: Material(
-          color: AppColors.background,
-          child: InkWell(
-            key: ValueKey('pace-key-$key'),
-            onTap: () => _onPadKey(key),
-            onLongPress: key == '⌫' ? _clearActive : null,
-            child: Center(
-              child: Text(
-                key,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: compact ? 16 : 20,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      semanticLabel: semanticLabel,
+      semanticHint: semanticHint,
+      spans: spans,
     );
   }
 

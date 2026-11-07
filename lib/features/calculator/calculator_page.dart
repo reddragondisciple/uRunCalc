@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -9,15 +8,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_strings.dart';
 import '../../core/expression_parser.dart';
-import '../../core/key_labels.dart';
 import '../../core/rational.dart';
 import '../../core/value_format.dart';
-import '../../theme/app_colors.dart';
 import '../../widgets/lazy_indexed_stack.dart';
 import '../info/info_view.dart';
 import '../pace/pace_view.dart';
 import '../simple/expression_view.dart';
 import '../time/time_view.dart';
+import 'calculator_display.dart';
+import 'calculator_keypad.dart';
 
 class CalculatorPage extends StatefulWidget {
   const CalculatorPage({super.key});
@@ -934,8 +933,22 @@ class _CalculatorPageState extends State<CalculatorPage>
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth > constraints.maxHeight;
-        final display = _buildDisplayArea(_preview);
-        final keypad = _buildKeypad(keys: _keys, columns: 4, simpleMode: true);
+        final display = CalculatorDisplay(
+          history: [for (final entry in _history) entry.text],
+          onHistorySelected: (index) => _reuseHistory(_history[index]),
+          currentValue: _buildCurrentValue(),
+          message: _message,
+          preview: _preview,
+        );
+        final keypad = CalculatorKeypad(
+          keys: _keys,
+          columns: 4,
+          simpleMode: true,
+          onPressed: _press,
+          onClearHistory: _clearHistory,
+          redKeys: _redKeys,
+          angleInDegrees: _angleInDegrees,
+        );
 
         if (isWide) {
           return Row(
@@ -953,92 +966,6 @@ class _CalculatorPageState extends State<CalculatorPage>
           ],
         );
       },
-    );
-  }
-
-  Widget _buildDisplayArea(String? preview) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
-      child: Column(
-        children: [
-          // История занимает свободное место и прокручивается отдельно.
-          Expanded(
-            child: _history.isEmpty
-                ? const SizedBox.shrink()
-                : ListView.builder(
-                    key: const ValueKey('history'),
-                    reverse: true,
-                    itemCount: _history.length,
-                    itemBuilder: (context, index) {
-                      final entry = _history[_history.length - 1 - index];
-
-                      return InkWell(
-                        key: ValueKey('history-$index'),
-                        onTap: () => _reuseHistory(entry),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              entry.text,
-                              textAlign: TextAlign.right,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.grey,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-
-          const SizedBox(height: 6),
-
-          // Текущий ввод всегда остаётся внизу поля.
-          SizedBox(
-            key: const ValueKey('current-display'),
-            height: 100,
-            width: double.infinity,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                reverse: true,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: _buildCurrentValue(),
-                ),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 4),
-
-          // Здесь показывается предпросмотр, десятичное значение или ошибка.
-          SizedBox(
-            key: const ValueKey('preview'),
-            height: 28,
-            width: double.infinity,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                _message ?? preview ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: _message == null ? Colors.grey : AppColors.danger,
-                  fontSize: 20,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1085,109 +1012,4 @@ class _CalculatorPageState extends State<CalculatorPage>
       fontWeight: _displayWeight,
     );
   }
-
-  Widget _buildKeypad({
-    required List<String> keys,
-    required int columns,
-    bool simpleMode = false,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rows = (keys.length / columns).ceil();
-        final cellWidth = math.max(
-          1.0,
-          (constraints.maxWidth - (columns - 1)) / columns,
-        );
-        final cellHeight = math.max(
-          1.0,
-          (constraints.maxHeight - (rows - 1)) / rows,
-        );
-
-        return GridView.count(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          crossAxisCount: columns,
-          mainAxisSpacing: 1,
-          crossAxisSpacing: 1,
-          childAspectRatio: cellWidth / cellHeight,
-          children: keys
-              .map((key) => _buildKey(key, fontBoost: simpleMode ? 2 : 0))
-              .toList(),
-        );
-      },
-    );
-  }
-
-  Widget _buildKey(String key, {double fontBoost = 0}) {
-    if (key.isEmpty) {
-      return Container(
-        color: const Color(0xFF555555),
-        padding: const EdgeInsets.all(0.5),
-        child: const Material(color: AppColors.background),
-      );
-    }
-
-    final label = _keyLabel(key);
-    final isEquals = key == '=';
-    final isRed = _redKeys.contains(key);
-
-    final Color buttonColor;
-    if (isEquals) {
-      buttonColor = AppColors.accent;
-    } else if (isRed) {
-      buttonColor = AppColors.danger;
-    } else {
-      buttonColor = AppColors.background;
-    }
-
-    final baseFontSize = label.length >= 3
-        ? 17.0
-        : key == '000'
-        ? 22.0
-        : 28.0;
-    final fontSize = baseFontSize + fontBoost;
-
-    return Container(
-      color: const Color(0xFF555555),
-      padding: const EdgeInsets.all(0.5),
-      child: Material(
-        color: buttonColor,
-        child: Semantics(
-          button: true,
-          label: _semanticLabel(key),
-          onTap: () => _press(key),
-          excludeSemantics: true,
-          child: InkWell(
-            key: ValueKey('key_$key'),
-            canRequestFocus: false,
-            onTap: () => _press(key),
-            onLongPress: key == 'C' ? _clearHistory : null,
-            child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _keyLabel(String key) {
-    if (key == 'angle') return _angleInDegrees ? 'DEG' : 'RAD';
-    return key;
-  }
-
-  String _semanticLabel(String key) => semanticKeyLabel(key);
 }

@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 
 import '../../core/app_strings.dart';
-import '../../core/key_labels.dart';
 import '../../core/persisted_json_store.dart';
 import '../../core/time_math.dart';
 import '../../print_table.dart';
@@ -26,6 +25,8 @@ import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
 import 'mountain_data.dart';
 import 'pace_calculations.dart';
+import 'pace_cells.dart';
+import 'pace_keyboard.dart';
 import 'pace_catalog.dart';
 import 'pace_gpx_import_ui.dart';
 import 'pace_settings_menu.dart';
@@ -978,7 +979,16 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(child: calculator),
-            SizedBox(width: 190, child: _buildKeyboard(compact: true)),
+            SizedBox(
+              width: 190,
+              child: PaceKeyboard(
+                compact: true,
+                tableLayout: false,
+                isUltra: _isUltra,
+                onKey: _onPadKey,
+                onClear: _clearActive,
+              ),
+            ),
           ],
         );
       }
@@ -986,7 +996,13 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
       return Column(
         children: [
           Expanded(child: calculator),
-          _buildKeyboard(compact: false),
+          PaceKeyboard(
+            compact: false,
+            tableLayout: false,
+            isUltra: _isUltra,
+            onKey: _onPadKey,
+            onClear: _clearActive,
+          ),
         ],
       );
     }
@@ -1020,7 +1036,13 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
                 child: _keyboardVisible
                     ? SizedBox(
                         width: keyboardWidth,
-                        child: _buildKeyboard(compact: true, tableLayout: true),
+                        child: PaceKeyboard(
+                          compact: true,
+                          tableLayout: true,
+                          isUltra: _isUltra,
+                          onKey: _onPadKey,
+                          onClear: _clearActive,
+                        ),
                       )
                     : const SizedBox(width: 0),
               ),
@@ -1055,7 +1077,13 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           alignment: Alignment.bottomCenter,
           onEnd: _ensureFocusVisibleNow,
           child: _keyboardVisible
-              ? _buildKeyboard(compact: false)
+              ? PaceKeyboard(
+                  compact: false,
+                  tableLayout: false,
+                  isUltra: _isUltra,
+                  onKey: _onPadKey,
+                  onClear: _clearActive,
+                )
               : const SizedBox(width: double.infinity, height: 0),
         ),
       ],
