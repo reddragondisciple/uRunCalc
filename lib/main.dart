@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'features/calculator/calculator_page.dart';
 import 'theme/app_colors.dart';
 
+export 'features/gpx/track_parse_async.dart' show debugParseTrackSynchronously;
 export 'features/pace/pace_view.dart'
     show debugPaceStateLoaderOverride, debugTrackFileStoreOverride;
 

@@ -91,73 +91,83 @@ TrackMetrics computeTrackMetrics(GpxTrack track) {
 ///
 /// `boundaries` — неубывающие границы: `[0, b1, ..., bN]`. Интервалы,
 /// пересекающие границу, делятся пропорционально.
+///
+/// Один проход по точкам трека: каждый интервал раскладывается по сегментам,
+/// которые он пересекает. Раньше для каждого сегмента трек проходился заново,
+/// то есть сложность была `O(точек × сегментов)`; теперь — `O(точек)`.
 List<SegmentStats> computeSegments(
   TrackMetrics metrics,
   List<double> boundaries,
 ) {
-  final result = <SegmentStats>[];
-  for (var s = 0; s + 1 < boundaries.length; s++) {
-    result.add(_segmentStats(metrics, boundaries[s], boundaries[s + 1]));
-  }
-  return result;
-}
+  final count = boundaries.length - 1;
+  if (count <= 0) return const [];
 
-SegmentStats _segmentStats(TrackMetrics metrics, double from, double to) {
   final track = metrics.track;
   final cum = metrics.cumDist2d;
-  final length = math.max(0.0, to - from);
-  const flat = 1.0;
-
-  if (length <= 0 || !track.hasElevation || track.length < 2) {
-    return SegmentStats(
-      lengthM: length,
-      ascentM: 0,
-      descentM: 0,
-      gapFactor: flat,
-    );
-  }
-
-  var ascent = 0.0;
-  var descent = 0.0;
-  var covered = 0.0; // 2D-длина, покрытая треком внутри сегмента
-  var movingM = 0.0; // путь по GAP: ds3 * k для каждого интервала
-
-  for (var i = 1; i < track.length; i++) {
-    final a = cum[i - 1];
-    final b = cum[i];
-    final overlap = math.min(b, to) - math.max(a, from);
-    if (overlap <= 0 || b <= a) continue;
-
-    final share = overlap / (b - a);
-    final dEle = (track.eles[i] - track.eles[i - 1]) * share;
-    if (dEle > 0) ascent += dEle;
-    if (dEle < 0) descent -= dEle;
-
-    covered += overlap;
-    if (overlap < minIntervalMeters) {
-      movingM += overlap; // короткий кусок считаем плоским
-      continue;
-    }
-    final grade = dEle / overlap;
-    final ds3 = math.sqrt(overlap * overlap + dEle * dEle);
-    movingM += ds3 * gapFactor(grade);
-  }
-
-  // Трек не покрывает сегмент полностью (колонка за пределами трека):
-  // по §5.1 фактор 1, а не усреднённый по части.
-  if (covered < length * 0.99) {
-    return SegmentStats(
-      lengthM: length,
-      ascentM: ascent,
-      descentM: descent,
-      gapFactor: flat,
-    );
-  }
-
-  return SegmentStats(
-    lengthM: length,
-    ascentM: ascent,
-    descentM: descent,
-    gapFactor: movingM / length,
+  final lengths = List<double>.generate(
+    count,
+    (s) => math.max(0.0, boundaries[s + 1] - boundaries[s]),
   );
+  final ascent = List<double>.filled(count, 0);
+  final descent = List<double>.filled(count, 0);
+  final covered = List<double>.filled(count, 0);
+  final moving = List<double>.filled(count, 0);
+
+  final canMeasure = track.hasElevation && track.length >= 2;
+  if (canMeasure) {
+    // Сегмент, с которого начинается текущий интервал. Границы неубывающие,
+    // поэтому указатель двигается только вперёд.
+    var first = 0;
+    for (var i = 1; i < track.length; i++) {
+      final a = cum[i - 1];
+      final b = cum[i];
+      if (b <= a) continue;
+
+      while (first < count && boundaries[first + 1] <= a) {
+        first++;
+      }
+
+      final pointRise = track.eles[i] - track.eles[i - 1];
+      for (var s = first; s < count && boundaries[s] < b; s++) {
+        final overlap =
+            math.min(b, boundaries[s + 1]) - math.max(a, boundaries[s]);
+        if (overlap <= 0) continue;
+
+        final share = overlap / (b - a);
+        final dEle = pointRise * share;
+        if (dEle > 0) ascent[s] += dEle;
+        if (dEle < 0) descent[s] -= dEle;
+
+        covered[s] += overlap;
+        if (overlap < minIntervalMeters) {
+          moving[s] += overlap; // короткий кусок считаем плоским
+          continue;
+        }
+        final grade = dEle / overlap;
+        final ds3 = math.sqrt(overlap * overlap + dEle * dEle);
+        moving[s] += ds3 * gapFactor(grade);
+      }
+    }
+  }
+
+  return [
+    for (var s = 0; s < count; s++)
+      lengths[s] <= 0 ||
+              !canMeasure ||
+              // Трек не покрывает сегмент полностью (колонка за пределами
+              // трека): по §5.1 фактор 1, а не усреднённый по части.
+              covered[s] < lengths[s] * 0.99
+          ? SegmentStats(
+              lengthM: lengths[s],
+              ascentM: ascent[s],
+              descentM: descent[s],
+              gapFactor: 1.0,
+            )
+          : SegmentStats(
+              lengthM: lengths[s],
+              ascentM: ascent[s],
+              descentM: descent[s],
+              gapFactor: moving[s] / lengths[s],
+            ),
+  ];
 }

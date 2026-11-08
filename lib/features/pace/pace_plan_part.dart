@@ -74,12 +74,28 @@ extension _PacePlanPart on _PaceViewState {
     );
   }
 
-  List<PlanSegment> _planSegments() => planSegmentsForColumns(
-    parsed: _loadedTrack,
-    columnDistancesKm: [
-      for (final value in _tableDistances) parseDecimal(value) ?? 0,
-    ],
-  );
+  /// Сегменты для плана. Кэш тот же, что и у D+/D−: один проход по треку на
+  /// изменение дистанций, а не на каждую клетку и не на каждый предпросмотр.
+  List<PlanSegment> _planSegments() {
+    final parsed = _loadedTrack;
+    if (identical(parsed, _cachedPlanTrack) &&
+        _cachedPlanColumns == _columns &&
+        listEquals(_cachedPlanDistances, _tableDistances) &&
+        _cachedPlanSegments != null) {
+      return _cachedPlanSegments!;
+    }
+    final segments = planSegmentsForColumns(
+      parsed: parsed,
+      columnDistancesKm: [
+        for (final value in _tableDistances) parseDecimal(value) ?? 0,
+      ],
+    );
+    _cachedPlanTrack = parsed;
+    _cachedPlanColumns = _columns;
+    _cachedPlanDistances = List<String>.of(_tableDistances);
+    _cachedPlanSegments = segments;
+    return segments;
+  }
 
   /// Текст предпросмотра «Плоский 6:00 → расчётный 6:38, итог 12:34 (со
   /// стоянками 45 мин)». Стоянки — суммарные минуты, распределяются по ПП.
@@ -349,12 +365,7 @@ extension _PacePlanPart on _PaceViewState {
     if (!_mountainEnabled || anchor == null) return false;
     // Ручная правка времени или темпа: значения пользователя не пересчитываем.
     if (anchor.kind == PlanAnchorKind.manual) return false;
-    final segments = planSegmentsForColumns(
-      parsed: _loadedTrack,
-      columnDistancesKm: [
-        for (final value in _tableDistances) parseDecimal(value) ?? 0,
-      ],
-    );
+    final segments = _planSegments();
     if (segments.isEmpty) return false;
     final start =
         _parseTimeBuffer(_planTimes[0]) ?? _parseTimeBuffer(_tableTimes[0]);

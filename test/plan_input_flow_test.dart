@@ -108,6 +108,14 @@ Future<void> tapPadKey(WidgetTester tester, String key) async {
 }
 
 void main() {
+  setUp(() {
+    debugParseTrackSynchronously = true;
+  });
+
+  tearDown(() {
+    debugParseTrackSynchronously = false;
+  });
+
   testWidgets('ввод итогового времени с горным треком открывает диалог', (
     tester,
   ) async {

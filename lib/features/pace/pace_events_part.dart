@@ -395,9 +395,14 @@ extension _PaceEventsPart on _PaceViewState {
   Future<void> _deleteRemovedTracks() async {
     final files = _trackFiles;
     for (final (event, distance) in _controller.takeRemovedDistances()) {
+      final distanceKey = trackDistanceKey(event, distance);
+      // Разобранный трек удалённой дистанции больше не должен занимать память.
+      _parsedTrackCache.removeWhere(
+        (cachedKey, _) => cachedKey.startsWith('$distanceKey/'),
+      );
       if (files == null) continue;
       try {
-        await files.deleteDistance(trackDistanceKey(event, distance));
+        await files.deleteDistance(distanceKey);
       } catch (error) {
         debugPrint(
           'uRunCalc: не удалось удалить трек $event/$distance: $error',

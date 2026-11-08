@@ -16,6 +16,46 @@ extension _PaceMountainPart on _PaceViewState {
     _update(() => _showStopsInPace = enabled);
   }
 
+  /// Разбор файла в фоновом изоляте. На нативных платформах показываем
+  /// модальный индикатор: большие треки разбираются заметное время.
+  Future<TrackParseResult> _parseTrackWithProgress(
+    PickedTrackFile picked,
+  ) async {
+    if (kIsWeb) return parseTrackFileAsync(picked);
+
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const PopScope(
+          canPop: false,
+          child: AlertDialog(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 16),
+                Expanded(child: Text(AppStrings.paceTrackParsing)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      return await parseTrackFileAsync(picked);
+    } catch (error) {
+      debugPrint('uRunCalc: не удалось разобрать трек: $error');
+      return const TrackParseResult(error: AppStrings.paceTrackReadError);
+    } finally {
+      if (mounted) navigator.pop();
+    }
+  }
+
   /// Выбор основного/резервного слота. Сам трек пока не переключается:
   /// это сделает импорт (следующий шаг).
   Future<void> _chooseTrackSlot() async {
@@ -26,6 +66,7 @@ extension _PaceMountainPart on _PaceViewState {
       // читается новый трек.
       _loadedTrack = null;
       _loadedTrackKey = null;
+      _clearDerivedTrackCache();
     });
     unawaited(_ensureTrackLoaded());
   }
@@ -64,7 +105,8 @@ extension _PaceMountainPart on _PaceViewState {
     }
     if (picked == null || !mounted) return;
 
-    final parsed = parseTrackFile(picked);
+    final parsed = await _parseTrackWithProgress(picked);
+    if (!mounted) return;
     if (parsed.parsed == null) {
       _showMessage('${AppStrings.paceTrackParseErrorPrefix}${parsed.error}');
       return;
@@ -162,9 +204,22 @@ extension _PaceMountainPart on _PaceViewState {
       _mountainEnabled = true;
       _tracks = _withTrackMeta(_tracks, slot, meta);
     });
-    _loadedTrack = null;
-    _loadedTrackKey = null;
-    unawaited(_ensureTrackLoaded());
+
+    // Импорт уже разобрал файл: сразу кладём результат в кэш и показываем
+    // его, чтобы не читать и не разбирать тот же GPX второй раз.
+    final cacheKey = _currentTrackKey();
+    final slotPrefix = '$key/$slot/';
+    _parsedTrackCache.removeWhere(
+      (cachedKey, _) => cachedKey.startsWith(slotPrefix),
+    );
+    _parsedTrackCache[cacheKey] = track;
+    _trimTrackCache();
+    _update(() {
+      _loadedTrack = track;
+      _loadedTrackKey = cacheKey;
+      _clearDerivedTrackCache();
+      _recomputeMountainPlan();
+    }, persist: false);
     _showMessage(AppStrings.paceTrackImportApplied);
   }
 
@@ -247,21 +302,79 @@ extension _PaceMountainPart on _PaceViewState {
     unawaited(_ensureTrackLoaded());
   }
 
-  String _currentTrackKey() =>
-      '${trackDistanceKey(_controller.selectedEvent, _controller.selectedDistance)}'
-      '/${_tracks.active}';
+  /// Ключ текущего трека: дистанция, слот и метаданные файла. Импорт меняет
+  /// `importedAtMs`, поэтому старый загруженный трек не считается актуальным.
+  String _currentTrackKey() {
+    final meta = _tracks.activeTrack;
+    return '${trackDistanceKey(_controller.selectedEvent, _controller.selectedDistance)}'
+        '/${_tracks.active}/${meta?.relativePath ?? ''}'
+        '/${meta?.importedAtMs ?? 0}';
+  }
+
+  /// Сбрасывает производные от трека значения при смене/удалении трека.
+  void _clearDerivedTrackCache() {
+    _cachedElevation = null;
+    _cachedElevationTrack = null;
+    _cachedElevationColumns = -1;
+    _cachedPlanSegments = null;
+    _cachedPlanTrack = null;
+    _cachedPlanColumns = -1;
+    _cachedProfile = null;
+    _cachedProfileTrack = null;
+  }
+
+  void _trimTrackCache() {
+    while (_parsedTrackCache.length > _PaceViewState._parsedTrackCacheLimit) {
+      _parsedTrackCache.remove(_parsedTrackCache.keys.first);
+    }
+  }
+
+  void _touchTrackCache(String key, ParsedTrack parsed) {
+    _parsedTrackCache.remove(key);
+    _parsedTrackCache[key] = parsed;
+  }
 
   /// D+/D− по сегментам текущей таблицы. `null`, если трека нет или он не
   /// загружен; тогда ряд показывает прочерк.
+  ///
+  /// Результат кэшируется: за один кадр геттер вызывается для ряда, итогов и
+  /// полосы профиля, а полный проход по точкам трека не бесплатный.
   ElevationSegments? get _elevationSegments {
     final parsed = _loadedTrack;
     if (parsed == null) return null;
-    return elevationForColumns(
+    if (identical(parsed, _cachedElevationTrack) &&
+        _cachedElevationColumns == _columns &&
+        listEquals(_cachedElevationDistances, _tableDistances)) {
+      return _cachedElevation;
+    }
+    final value = elevationForColumns(
       parsed: parsed,
       columnDistancesKm: [
         for (final value in _tableDistances) parseDecimal(value) ?? 0,
       ],
     );
+    _cachedElevationTrack = parsed;
+    _cachedElevationColumns = _columns;
+    _cachedElevationDistances = List<String>.of(_tableDistances);
+    _cachedElevation = value;
+    return value;
+  }
+
+  /// Есть ли по текущему треку высоты, которыми можно поделиться в таблице.
+  bool get _hasElevationData => _loadedTrack?.track.hasElevation ?? false;
+
+  /// Профиль для карты строится один раз на трек: открытие окна и встроенная
+  /// полоса используют один и тот же список точек.
+  List<ProfilePoint> _elevationProfile() {
+    final parsed = _loadedTrack;
+    if (parsed == null) return const [];
+    if (identical(parsed, _cachedProfileTrack) && _cachedProfile != null) {
+      return _cachedProfile!;
+    }
+    final profile = buildElevationProfile(parsed, maxPoints: 1000);
+    _cachedProfileTrack = parsed;
+    _cachedProfile = profile;
+    return profile;
   }
 
   /// Читает активный трек с диска. Ошибки не роняют экран: ряд просто пуст.
@@ -284,6 +397,19 @@ extension _PaceMountainPart on _PaceViewState {
         if (files == null || meta == null || !_mountainEnabled) return;
         if (_loadedTrackKey == key) return;
 
+        // Возврат на уже разобранную дистанцию/слот: файл не читаем.
+        final cached = _parsedTrackCache[key];
+        if (cached != null) {
+          _touchTrackCache(key, cached);
+          _update(() {
+            _loadedTrack = cached;
+            _loadedTrackKey = key;
+            _clearDerivedTrackCache();
+            _recomputeMountainPlan();
+          }, persist: false);
+          return;
+        }
+
         final content = await files.read(
           distanceKey: trackDistanceKey(
             _controller.selectedEvent,
@@ -305,30 +431,39 @@ extension _PaceMountainPart on _PaceViewState {
           _update(() {
             _loadedTrack = null;
             _loadedTrackKey = key;
+            _clearDerivedTrackCache();
           }, persist: false);
           return;
         }
 
-        final parsed = parseTrackFile(
+        // Кандидаты ПП нужны только диалогу импорта — при загрузке таблицы
+        // не тратим на них время.
+        final parsed = await parseTrackFileAsync(
           PickedTrackFile(name: meta.originalName, content: content),
+          withCandidates: false,
         );
-        if (parsed.parsed == null) {
-          // Битый файл: ведём себя как с отсутствующим.
-          _update(() {
-            _loadedTrack = null;
-            _loadedTrackKey = key;
-          }, persist: false);
-          return;
-        }
         if (!mounted) return;
         if (key != _currentTrackKey()) {
           _trackLoadQueued = true;
           continue;
         }
+        if (parsed.parsed == null) {
+          // Битый файл: ведём себя как с отсутствующим.
+          _update(() {
+            _loadedTrack = null;
+            _loadedTrackKey = key;
+            _clearDerivedTrackCache();
+          }, persist: false);
+          return;
+        }
 
+        final loaded = parsed.parsed!.measuredFromStartIfOffset(meta.offsetM);
+        _parsedTrackCache[key] = loaded;
+        _trimTrackCache();
         _update(() {
-          _loadedTrack = parsed.parsed!.measuredFromStartIfOffset(meta.offsetM);
+          _loadedTrack = loaded;
           _loadedTrackKey = key;
+          _clearDerivedTrackCache();
           // Новый трек меняет высоты сегментов — план пересчитывается.
           _recomputeMountainPlan();
         }, persist: false);
@@ -357,16 +492,12 @@ extension _PaceMountainPart on _PaceViewState {
     );
   }
 
-  /// Долгое нажатие на ряд высот открывает карту по текущему треку.
-  /// Без трека карта показывает «нет данных о высоте».
-  void _openElevationChart() {
-    final parsed = _loadedTrack;
+  /// Данные для карты по текущему треку и дистанциям.
+  ElevationChartData _elevationChartData() {
     final elevation = _elevationSegments;
     final kms = <double?>[for (final v in _tableDistances) parseDecimal(v)];
-    final data = ElevationChartData(
-      profile: parsed == null
-          ? const []
-          : buildElevationProfile(parsed, maxPoints: 1000),
+    return ElevationChartData(
+      profile: _elevationProfile(),
       markers: [
         for (var i = 0; i < kms.length; i++) ?_elevationMarker(i, kms[i]),
       ],
@@ -374,7 +505,100 @@ extension _PaceMountainPart on _PaceViewState {
       totalDescentM: elevation?.totalDescentM ?? 0,
       boundariesKm: [for (final km in kms) ?km],
     );
-    unawaited(showElevationChart(context, data));
+  }
+
+  /// Открывает окно карты. [focusColumn] — колонка ПП, по которой тапнули:
+  /// окно сразу показывает сегмент `focusColumn−1 → focusColumn`.
+  void _openElevationChart({int? focusColumn}) {
+    double? fromKm;
+    double? toKm;
+    if (focusColumn != null && focusColumn > 0 && focusColumn < _columns) {
+      final a = parseDecimal(_tableDistances[focusColumn - 1]);
+      final b = parseDecimal(_tableDistances[focusColumn]);
+      if (a != null && b != null && b > a) {
+        fromKm = a;
+        toKm = b;
+      }
+    }
+    unawaited(
+      showElevationChart(
+        context,
+        _elevationChartData(),
+        initialFromKm: fromKm,
+        initialToKm: toKm,
+      ),
+    );
+  }
+
+  /// Раскрывает/сворачивает встроенную полосу профиля. Без трека с высотами
+  /// полоса не раскрывается: в окне останется «нет данных».
+  void _toggleElevationRow() {
+    if (!_hasElevationData) return;
+    _hideKeyboard();
+    _update(() => _elevationRowOpen = !_elevationRowOpen, persist: false);
+  }
+
+  /// Левая половина видимой области таблицы. При горизонтальной прокрутке
+  /// половина считается от экрана, а не от полной ширины всех колонок.
+  bool _isLeftHalfOfVisibleTable(Offset globalPosition) {
+    final box =
+        _tableViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return false;
+    return box.globalToLocal(globalPosition).dx < box.size.width / 2;
+  }
+
+  /// Клетка ряда высот: тап слева раскрывает полосу, тап справа открывает
+  /// окно с фокусом на сегменте. Долгое нажатие всегда открывает окно.
+  Widget _elevationTapArea({required int column, required Widget child}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapUp: (details) {
+        if (_isLeftHalfOfVisibleTable(details.globalPosition)) {
+          _toggleElevationRow();
+        } else {
+          _openElevationChart(focusColumn: column);
+        }
+      },
+      onLongPress: () => _openElevationChart(focusColumn: column),
+      child: child,
+    );
+  }
+
+  /// Встроенная полоса профиля под рядом высот. Тап открывает полное окно.
+  Widget _elevationStripRow({required double height}) {
+    final data = _elevationChartData();
+    final hasProfile = data.profile.isNotEmpty;
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openElevationChart(),
+        child: Container(
+          key: const ValueKey('pace-elevation-chart-inline'),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceRaised,
+            border: Border.all(color: Colors.grey.shade800),
+          ),
+          child: hasProfile
+              ? CustomPaint(
+                  size: Size.infinite,
+                  painter: ElevationProfilePainter(
+                    profile: data.profile,
+                    fromKm: data.profile.first.km,
+                    toKm: data.profile.last.km,
+                    markers: data.markers,
+                  ),
+                )
+              : Center(
+                  child: Text(
+                    AppStrings.elevationChartNoData,
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+                  ),
+                ),
+        ),
+      ),
+    );
   }
 
   /// Клетки ряда подъём–спуск. Первая клетка служебная: `↑↓`.
@@ -382,12 +606,16 @@ extension _PaceMountainPart on _PaceViewState {
     final elevation = _elevationSegments;
     return List.generate(_columns, (index) {
       if (index == 0) {
-        return _interactiveCell(
-          key: 'pace-elevation-label',
-          text: '↑↓',
-          result: true,
-          color: Colors.grey,
-          onLongPress: _openElevationChart,
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggleElevationRow,
+          onLongPress: () => _openElevationChart(),
+          child: _interactiveCell(
+            key: 'pace-elevation-label',
+            text: '↑↓',
+            result: true,
+            color: Colors.grey,
+          ),
         );
       }
       final text = elevation == null
@@ -396,23 +624,25 @@ extension _PaceMountainPart on _PaceViewState {
               elevation.ascentM[index],
               elevation.descentM[index],
             );
-      return _interactiveCell(
-        key: 'pace-elevation-$index',
-        text: text,
-        placeholder: elevation == null,
-        spans: elevation == null
-            ? null
-            : elevationPairSpans(
-                elevation.ascentM[index],
-                elevation.descentM[index],
-                upColor: AppColors.danger,
-                downColor: AppColors.focus,
-                separatorColor: AppColors.result,
-              ),
-        result: true,
-        dayBorder: _dayBorderColor(index, _limitDays),
-        boldBorder: _boldColumns.contains(index),
-        onLongPress: _openElevationChart,
+      return _elevationTapArea(
+        column: index,
+        child: _interactiveCell(
+          key: 'pace-elevation-$index',
+          text: text,
+          placeholder: elevation == null,
+          spans: elevation == null
+              ? null
+              : elevationPairSpans(
+                  elevation.ascentM[index],
+                  elevation.descentM[index],
+                  upColor: AppColors.danger,
+                  downColor: AppColors.focus,
+                  separatorColor: AppColors.result,
+                ),
+          result: true,
+          dayBorder: _dayBorderColor(index, _limitDays),
+          boldBorder: _boldColumns.contains(index),
+        ),
       );
     });
   }
@@ -433,6 +663,23 @@ extension _PaceMountainPart on _PaceViewState {
       height: height,
       child: Row(
         children: [
+          // Служебная клетка раскрытия: итоговый ряд не делится 50/50,
+          // иначе «набор» и «сброс» перестали бы читаться.
+          SizedBox(
+            width: _PaceViewState._elevationToggleWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 0.5),
+              child: _interactiveCell(
+                key: 'pace-elevation-toggle',
+                text: '↕',
+                result: true,
+                fontSize: 14,
+                color: Colors.grey,
+                onTap: _toggleElevationRow,
+                onLongPress: () => _openElevationChart(),
+              ),
+            ),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 0.5),
@@ -441,7 +688,8 @@ extension _PaceMountainPart on _PaceViewState {
                 text: AppStrings.paceTotalAscentLine(ascent),
                 result: true,
                 fontSize: 14,
-                onLongPress: _openElevationChart,
+                onTap: () => _openElevationChart(),
+                onLongPress: () => _openElevationChart(),
               ),
             ),
           ),
@@ -453,7 +701,8 @@ extension _PaceMountainPart on _PaceViewState {
                 text: AppStrings.paceTotalDescentLine(descent),
                 result: true,
                 fontSize: 14,
-                onLongPress: _openElevationChart,
+                onTap: () => _openElevationChart(),
+                onLongPress: () => _openElevationChart(),
               ),
             ),
           ),
@@ -481,7 +730,8 @@ extension _PaceMountainPart on _PaceViewState {
             ),
       result: true,
       bold: true,
-      onLongPress: _openElevationChart,
+      onTap: () => _openElevationChart(),
+      onLongPress: () => _openElevationChart(),
     );
   }
 }

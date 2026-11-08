@@ -20,6 +20,8 @@ import '../gpx/elevation_segments.dart';
 import '../gpx/gpx_import.dart';
 import '../gpx/parsed_track.dart';
 import '../gpx/plan_math.dart';
+import '../gpx/track_parse.dart';
+import '../gpx/track_parse_async.dart';
 import '../gpx/track_store.dart';
 import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
@@ -262,8 +264,43 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   /// нужно проверить актуальный ключ и при необходимости загрузить другой трек.
   bool _trackLoadQueued = false;
 
+  /// Разобранные треки для быстрого возврата на дистанцию/слот. Ключ —
+  /// [TrackMeta] вместе с дистанцией и слотом. Храним несколько последних:
+  /// переключение между двумя дистанциями не должно перечитывать файл.
+  final Map<String, ParsedTrack> _parsedTrackCache = {};
+  static const int _parsedTrackCacheLimit = 3;
+
+  /// Кэш производных от трека. Пересчитывается только при смене трека,
+  /// дистанций или числа колонок — иначе один и тот же проход по точкам
+  /// выполнялся бы несколько раз за кадр.
+  ElevationSegments? _cachedElevation;
+  ParsedTrack? _cachedElevationTrack;
+  List<String> _cachedElevationDistances = const [];
+  int _cachedElevationColumns = -1;
+
+  List<PlanSegment>? _cachedPlanSegments;
+  ParsedTrack? _cachedPlanTrack;
+  List<String> _cachedPlanDistances = const [];
+  int _cachedPlanColumns = -1;
+
+  List<ProfilePoint>? _cachedProfile;
+  ParsedTrack? _cachedProfileTrack;
+
+  /// Раскрыта ли встроенная полоса профиля высот. Не сохраняется.
+  bool _elevationRowOpen = false;
+
+  /// Видимая область таблицы: нужна, чтобы делить ряд высот на левую и
+  /// правую половину при горизонтальной прокрутке.
+  final GlobalKey _tableViewportKey = GlobalKey();
+
   /// Высота ряда подъём–спуск в портрете, пикселей.
   static const double _elevationRowHeight = 30;
+
+  /// Высота встроенной полосы профиля в портрете, пикселей.
+  static const double _elevationStripHeight = 96;
+
+  /// Служебная клетка раскрытия в итоговом ряду высот, пикселей.
+  static const double _elevationToggleWidth = 30;
 
   bool get _isUltra => widget.surface == PaceSurface.ultra;
 

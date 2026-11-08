@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -7,18 +5,8 @@ import '../../core/app_strings.dart';
 import '../gpx/checkpoint_matching.dart';
 import '../gpx/gpx_import.dart';
 import '../gpx/gpx_parser.dart';
-import '../gpx/gpx_track.dart';
-import '../gpx/parsed_track.dart';
 import '../gpx/plan_math.dart';
-import '../gpx/track_metrics.dart';
-
-/// Выбранный файл трека: имя и содержимое.
-class PickedTrackFile {
-  const PickedTrackFile({required this.name, required this.content});
-
-  final String name;
-  final String content;
-}
+import '../gpx/track_parse.dart';
 
 /// Ошибка выбора/чтения файла трека. Текст уже готов для показа пользователю.
 class TrackFilePickException implements Exception {
@@ -75,31 +63,6 @@ class TrackFilePicker {
       debugPrint('uRunCalc: не удалось прочитать выбранный файл: $error');
       throw const TrackFilePickException(AppStrings.paceTrackReadError);
     }
-  }
-}
-
-/// Разбирает GPX и готовит данные для сравнения. Ошибку формата
-/// возвращает строкой, которую можно показать пользователю.
-({ParsedTrack? parsed, String? error}) parseTrackFile(PickedTrackFile file) {
-  try {
-    final track = parseGpx(file.content);
-    final metrics = computeTrackMetrics(track);
-    final candidates = buildCandidates(track, metrics);
-    final whole = computeSegments(metrics, [0, metrics.totalDistance2d]).single;
-    return (
-      parsed: ParsedTrack(
-        track: track,
-        metrics: metrics,
-        candidates: candidates,
-        totalAscentM: whole.ascentM,
-        totalDescentM: whole.descentM,
-      ),
-      error: null,
-    );
-  } on GpxFormatException catch (error) {
-    return (parsed: null, error: error.message);
-  } on FileSystemException {
-    return (parsed: null, error: AppStrings.paceTrackReadError);
   }
 }
 

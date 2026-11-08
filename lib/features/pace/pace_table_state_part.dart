@@ -44,6 +44,8 @@ extension _PaceTableStatePart on _PaceViewState {
     _boldColumns.clear();
     _loadedTrack = null;
     _loadedTrackKey = null;
+    _clearDerivedTrackCache();
+    _elevationRowOpen = false;
     final data = _controller.currentTable;
     if (data == null) {
       final distance = _controller.currentDistance;
@@ -107,6 +109,8 @@ extension _PaceTableStatePart on _PaceViewState {
   }
 
   void _resetTable(int columns, [PaceDistance? distance]) {
+    _elevationRowOpen = false;
+    _clearDerivedTrackCache();
     _mountainEnabled = false;
     _showStopsInPace = false;
     _tracks = TrackSlots.empty;

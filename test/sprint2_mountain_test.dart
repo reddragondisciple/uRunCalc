@@ -232,7 +232,12 @@ String _gpxWithElevations(List<int> elevations) {
 }
 
 void main() {
+  setUp(() {
+    debugParseTrackSynchronously = true;
+  });
+
   tearDown(() {
+    debugParseTrackSynchronously = false;
     debugTrackFileStoreOverride = null;
     debugPaceStateLoaderOverride = null;
   });

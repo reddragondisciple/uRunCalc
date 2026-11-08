@@ -166,6 +166,7 @@ class AppStrings {
   static const String paceTrackImportSlot = 'В какой слот загрузить';
   static const String paceTrackPickCancelled = 'Файл не выбран';
   static const String paceTrackReadError = 'Не удалось прочитать файл';
+  static const String paceTrackParsing = 'Разбор трека…';
   static const String paceTrackFileTooLarge =
       'Файл больше 50 МБ — выберите трек меньшего размера';
   static const String paceTrackParseErrorPrefix = 'Трек не загружен: ';

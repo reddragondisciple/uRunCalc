@@ -45,6 +45,9 @@ extension _PaceTablePart on _PaceViewState {
         // Ряд высот (горный режим) вставляется после «Расстояния» в обоих
         // режимах, поэтому подписи и высоты строятся от одного списка рядов.
         final elevationOn = _mountainEnabled;
+        // Полоса профиля раскрывается под блоком высот, как ряд стоянок.
+        // Без трека с высотами не раскрываем: показывать нечего.
+        final stripOn = elevationOn && _elevationRowOpen && _hasElevationData;
         // Ряд стоянок раскрывается строкой под «Плановым темпом» (§7.4).
         final stopsOn = _stopsRowOpen ? 1 : 0;
         final compactLabels = <String>[
@@ -52,6 +55,7 @@ extension _PaceTablePart on _PaceViewState {
           AppStrings.paceRowLimit,
           AppStrings.paceRowDistance,
           if (elevationOn) AppStrings.paceRowElevation,
+          if (stripOn) '',
           AppStrings.paceRowSegmentPace,
           AppStrings.paceRowPlan,
           AppStrings.paceRowPlanPace,
@@ -70,6 +74,7 @@ extension _PaceTablePart on _PaceViewState {
           '',
           '',
           if (elevationOn) ...['', ''],
+          if (stripOn) '',
           '',
           AppStrings.paceRowPlan,
           '',
@@ -89,6 +94,7 @@ extension _PaceTablePart on _PaceViewState {
             1.3,
             1.3,
             if (elevationOn) 1.3,
+            if (stripOn) 2.4,
             1.3,
             1.3,
             1.3,
@@ -168,6 +174,10 @@ extension _PaceTablePart on _PaceViewState {
                 total: _elevationTotalCell(),
               ),
             );
+            next++;
+          }
+          if (stripOn) {
+            rows.add(_elevationStripRow(height: heights[next]));
             next++;
           }
           rows.add(
@@ -315,6 +325,13 @@ extension _PaceTablePart on _PaceViewState {
                 meters: true,
               ),
             );
+            if (stripOn) {
+              rows.add(
+                _elevationStripRow(
+                  height: _PaceViewState._elevationStripHeight,
+                ),
+              );
+            }
           }
           rows.add(
             _limitSummarySplitRow(height: heights[4 + pe], expanded: _fitTable),
@@ -423,12 +440,15 @@ extension _PaceTablePart on _PaceViewState {
                 ),
               ),
               Expanded(
-                child: _fitTable
-                    ? table
-                    : SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: table,
-                      ),
+                child: KeyedSubtree(
+                  key: _tableViewportKey,
+                  child: _fitTable
+                      ? table
+                      : SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: table,
+                        ),
+                ),
               ),
             ],
           );
@@ -457,12 +477,15 @@ extension _PaceTablePart on _PaceViewState {
           ),
         );
 
-        return _fitTable
-            ? table
-            : SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: table,
-              );
+        return KeyedSubtree(
+          key: _tableViewportKey,
+          child: _fitTable
+              ? table
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: table,
+                ),
+        );
       },
     );
   }

@@ -207,7 +207,12 @@ class ElevationChartData {
 /// Открывает карту: bottom sheet в портрете, полупрозрачный экран на весь
 /// размер в ландшафте. Закрывается крестиком, свайпом вниз (sheet) и
 /// системной кнопкой «назад».
-Future<void> showElevationChart(BuildContext context, ElevationChartData data) {
+Future<void> showElevationChart(
+  BuildContext context,
+  ElevationChartData data, {
+  double? initialFromKm,
+  double? initialToKm,
+}) {
   final landscape = MediaQuery.orientationOf(context) == Orientation.landscape;
   if (landscape) {
     return Navigator.of(context).push(
@@ -215,8 +220,12 @@ Future<void> showElevationChart(BuildContext context, ElevationChartData data) {
         opaque: false,
         barrierDismissible: true,
         barrierColor: Colors.black54,
-        pageBuilder: (_, _, _) =>
-            _ElevationChartScaffold(data: data, landscape: true),
+        pageBuilder: (_, _, _) => _ElevationChartScaffold(
+          data: data,
+          landscape: true,
+          initialFromKm: initialFromKm,
+          initialToKm: initialToKm,
+        ),
       ),
     );
   }
@@ -227,16 +236,30 @@ Future<void> showElevationChart(BuildContext context, ElevationChartData data) {
     useSafeArea: true,
     builder: (_) => FractionallySizedBox(
       heightFactor: 0.5,
-      child: _ElevationChartScaffold(data: data, landscape: false),
+      child: _ElevationChartScaffold(
+        data: data,
+        landscape: false,
+        initialFromKm: initialFromKm,
+        initialToKm: initialToKm,
+      ),
     ),
   );
 }
 
 class _ElevationChartScaffold extends StatefulWidget {
-  const _ElevationChartScaffold({required this.data, required this.landscape});
+  const _ElevationChartScaffold({
+    required this.data,
+    required this.landscape,
+    this.initialFromKm,
+    this.initialToKm,
+  });
 
   final ElevationChartData data;
   final bool landscape;
+
+  /// Начальный фокус: сегмент, по клетке которого открыли окно.
+  final double? initialFromKm;
+  final double? initialToKm;
 
   @override
   State<_ElevationChartScaffold> createState() =>
@@ -264,8 +287,21 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
   @override
   void initState() {
     super.initState();
-    _fromKm = _wholeFrom;
-    _toKm = _wholeTo;
+    final wholeFrom = _wholeFrom;
+    final wholeTo = _wholeTo;
+    final from = widget.initialFromKm;
+    final to = widget.initialToKm;
+    if (from != null && to != null && to > from && wholeTo > wholeFrom) {
+      final clampedFrom = math.max(wholeFrom, from);
+      final clampedTo = math.min(wholeTo, to);
+      if (clampedTo > clampedFrom) {
+        _fromKm = clampedFrom;
+        _toKm = clampedTo;
+        return;
+      }
+    }
+    _fromKm = wholeFrom;
+    _toKm = wholeTo;
   }
 
   void _focusSegment(double km) {
