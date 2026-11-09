@@ -735,6 +735,17 @@ extension _PaceEventsPart on _PaceViewState {
     ];
     final pace = _overallPaceSeconds;
     final plannedPace = _overallPlannedPaceSeconds;
+    final elevation = _hasElevationData ? _elevationSegments : null;
+    final elevationPairs = <String>[
+      if (elevation != null)
+        for (var index = 0; index < _columns; index++)
+          index == 0
+              ? ''
+              : formatElevationPair(
+                  elevation.ascentM[index],
+                  elevation.descentM[index],
+                ),
+    ];
 
     return PrintTableData(
       event: _eventLabel,
@@ -759,6 +770,19 @@ extension _PaceEventsPart on _PaceViewState {
       plannedTime: _formatElapsedMinutes(_overallPlannedFinishMinutes),
       boldColumns: _boldColumns.toList()..sort(),
       dayIndexes: List<int>.of(_limitDays),
+      activeTrack: _activeTrackSlotLabel,
+      elevationPairs: elevationPairs,
+      totalAscent: elevation == null
+          ? ''
+          : formatElevationMeters(elevation.totalAscentM),
+      totalDescent: elevation == null
+          ? ''
+          : formatElevationMeters(elevation.totalDescentM),
+      profile: _hasElevationData ? _elevationProfile() : const [],
+      elevationKms: [
+        for (var index = 0; index < _columns; index++)
+          parseDecimal(_tableDistances[index]) ?? 0,
+      ],
     );
   }
 

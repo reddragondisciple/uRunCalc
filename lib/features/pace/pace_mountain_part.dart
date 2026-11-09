@@ -481,25 +481,33 @@ extension _PaceMountainPart on _PaceViewState {
   }
 
   /// Маркер ПП на карте. Пустое расстояние — маркера нет.
-  ElevationMarker? _elevationMarker(int index, double? km) {
+  ///
+  /// Во встроенной полосе подпись «Старт» не нужна: она конкурирует с
+  /// подписями высот. В полном окне карты подпись остаётся.
+  ElevationMarker? _elevationMarker(
+    int index,
+    double? km, {
+    bool includeStartLabel = true,
+  }) {
     if (km == null) return null;
     final note = index < _notes.length ? _notes[index].trim() : '';
     return ElevationMarker(
       km: km,
       label: index == 0
-          ? AppStrings.paceTrackStartLabel
+          ? (includeStartLabel ? AppStrings.paceTrackStartLabel : '')
           : (note.isEmpty ? 'CP$index' : note),
     );
   }
 
   /// Данные для карты по текущему треку и дистанциям.
-  ElevationChartData _elevationChartData() {
+  ElevationChartData _elevationChartData({bool includeStartLabel = true}) {
     final elevation = _elevationSegments;
     final kms = <double?>[for (final v in _tableDistances) parseDecimal(v)];
     return ElevationChartData(
       profile: _elevationProfile(),
       markers: [
-        for (var i = 0; i < kms.length; i++) ?_elevationMarker(i, kms[i]),
+        for (var i = 0; i < kms.length; i++)
+          ?_elevationMarker(i, kms[i], includeStartLabel: includeStartLabel),
       ],
       totalAscentM: elevation?.totalAscentM ?? 0,
       totalDescentM: elevation?.totalDescentM ?? 0,
@@ -535,6 +543,7 @@ extension _PaceMountainPart on _PaceViewState {
   void _toggleElevationRow() {
     if (!_hasElevationData) return;
     _hideKeyboard();
+    unawaited(HapticFeedback.selectionClick());
     _update(() => _elevationRowOpen = !_elevationRowOpen, persist: false);
   }
 
@@ -565,12 +574,15 @@ extension _PaceMountainPart on _PaceViewState {
   }
 
   /// Встроенная полоса профиля под рядом высот. Тап открывает полное окно.
-  Widget _elevationStripRow({required double height}) {
-    final data = _elevationChartData();
+  ///
+  /// [width] ограничивает полосу колонками таблицы в ландшафте, чтобы она не
+  /// заезжала на колонку `Total`.
+  Widget _elevationStripRow({required double height, double? width}) {
+    final data = _elevationChartData(includeStartLabel: false);
     final hasProfile = data.profile.isNotEmpty;
-    return SizedBox(
+    final strip = SizedBox(
       height: height,
-      width: double.infinity,
+      width: width ?? double.infinity,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => _openElevationChart(),
@@ -599,6 +611,9 @@ extension _PaceMountainPart on _PaceViewState {
         ),
       ),
     );
+    return width == null
+        ? strip
+        : Align(alignment: Alignment.centerLeft, child: strip);
   }
 
   /// Клетки ряда подъём–спуск. Первая клетка служебная: `↑↓`.

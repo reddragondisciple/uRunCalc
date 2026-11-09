@@ -353,6 +353,7 @@ class AppStrings {
   // PDF-таблица.
   static const String printPlanTitle = 'uRunCalc — таблица плана';
   static const String printTimeLimit = 'Время (лимит)';
+  static const String printElevationRow = 'D+/D−';
 
   static String printPage(int page, int total) => 'Страница $page из $total';
 
@@ -361,4 +362,9 @@ class AppStrings {
 
   static String printPlanSummary(String pace, String time) =>
       'Итоговый темп: $pace    Итоговое время: $time';
+
+  static String printTrackSummary(String label) => 'Трек: $label';
+
+  static String printElevationSummary(String ascent, String descent) =>
+      'Набор: $ascent м    Сброс: $descent м';
 }

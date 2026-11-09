@@ -154,7 +154,9 @@ class ElevationProfilePainter extends CustomPainter {
           ..color = Colors.amberAccent.withValues(alpha: 0.7)
           ..strokeWidth = 1,
       );
-      _text(canvas, m.label, Offset(x + 2, 2), 10, color: Colors.amberAccent);
+      if (m.label.isNotEmpty) {
+        _text(canvas, m.label, Offset(x + 2, 2), 10, color: Colors.amberAccent);
+      }
     }
   }
 

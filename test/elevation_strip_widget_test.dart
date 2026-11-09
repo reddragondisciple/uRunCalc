@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ultra_run_calc/core/app_strings.dart';
@@ -184,6 +185,37 @@ void main() {
     expect(_strip, findsNothing);
   });
 
+  testWidgets('раскрытие полосы даёт виброотклик', (tester) async {
+    await _pumpWithTrack(tester);
+
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pace-elevation-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      calls.any(
+        (call) =>
+            call.method == 'HapticFeedback.vibrate' &&
+            call.arguments == 'HapticFeedbackType.selectionClick',
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('правая половина открывает окно с фокусом на сегменте', (
     tester,
   ) async {
@@ -236,6 +268,40 @@ void main() {
 
     expect(_strip, findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('в ландшафте темп сегмента идёт сразу под расстоянием', (
+    tester,
+  ) async {
+    await _pumpWithTrack(tester, size: const Size(844, 390));
+
+    final distanceY = tester
+        .getTopLeft(find.byKey(const ValueKey('pace-table-distance-1')))
+        .dy;
+    final paceY = tester
+        .getTopLeft(find.byKey(const ValueKey('pace-table-pace-1')))
+        .dy;
+    final elevationY = tester
+        .getTopLeft(find.byKey(const ValueKey('pace-elevation-1')))
+        .dy;
+
+    expect(paceY, greaterThan(distanceY));
+    expect(elevationY, greaterThan(paceY));
+  });
+
+  testWidgets('в ландшафте полоса заканчивается до колонки Total', (
+    tester,
+  ) async {
+    await _pumpWithTrack(tester, size: const Size(844, 390));
+
+    await tester.tap(find.byKey(const ValueKey('pace-elevation-1')));
+    await tester.pumpAndSettle();
+
+    final stripRect = tester.getRect(_strip);
+    final totalRect = tester.getRect(
+      find.byKey(const ValueKey('pace-total-header')),
+    );
+    expect(stripRect.right, lessThanOrEqualTo(totalRect.left + 0.5));
   });
 
   testWidgets('смена таблицы сворачивает полосу', (tester) async {

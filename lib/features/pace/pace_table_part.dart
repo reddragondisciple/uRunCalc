@@ -41,8 +41,22 @@ extension _PaceTablePart on _PaceViewState {
     return LayoutBuilder(
       builder: (context, constraints) {
         final gap = compact ? 2.0 : 5.0;
+        const compactLabelWidth = 58.0;
+        final compactAvailableWidth = math.max(
+          1.0,
+          constraints.maxWidth - compactLabelWidth,
+        );
+        final compactTableWidth = _fitTable
+            ? compactAvailableWidth
+            : _columns * _PaceViewState._fixedCellWidth + _totalColumnWidth;
+        // В ландшафте полоса профиля заканчивается на «Финише» и не заезжает
+        // на служебную колонку Total.
+        final compactDataWidth = math.max(
+          0.0,
+          compactTableWidth - _totalColumnWidth,
+        );
 
-        // Ряд высот (горный режим) вставляется после «Расстояния» в обоих
+        // Ряд высот (горный режим) вставляется после «Темпа сегмента» в обоих
         // режимах, поэтому подписи и высоты строятся от одного списка рядов.
         final elevationOn = _mountainEnabled;
         // Полоса профиля раскрывается под блоком высот, как ряд стоянок.
@@ -54,9 +68,9 @@ extension _PaceTablePart on _PaceViewState {
           '',
           AppStrings.paceRowLimit,
           AppStrings.paceRowDistance,
+          AppStrings.paceRowSegmentPace,
           if (elevationOn) AppStrings.paceRowElevation,
           if (stripOn) '',
-          AppStrings.paceRowSegmentPace,
           AppStrings.paceRowPlan,
           AppStrings.paceRowPlanPace,
           if (stopsOn == 1) AppStrings.paceRowStops,
@@ -87,15 +101,15 @@ extension _PaceTablePart on _PaceViewState {
 
         late List<double> heights;
         if (compact) {
-          // Горный режим: ряд высот вставлен после «Расстояния», а «Вода» и
-          // «Еда» уступают ему место поровну.
+          // Горный режим: ряд высот вставлен после «Темпа сегмента», а
+          // «Вода» и «Еда» уступают ему место поровну.
           final weights = <double>[
+            1.3,
             1.3,
             1.3,
             1.3,
             if (elevationOn) 1.3,
             if (stripOn) 2.4,
-            1.3,
             1.3,
             1.3,
             if (stopsOn == 1) 1.3,
@@ -165,25 +179,11 @@ extension _PaceTablePart on _PaceViewState {
             ),
           );
           var next = 3;
-          if (elevationOn) {
-            rows.add(
-              _tableRow(
-                cells: _elevationCells(),
-                height: heights[next],
-                expanded: _fitTable,
-                total: _elevationTotalCell(),
-              ),
-            );
-            next++;
-          }
-          if (stripOn) {
-            rows.add(_elevationStripRow(height: heights[next]));
-            next++;
-          }
+          // Темп сегмента идёт сразу под расстоянием, как в портрете.
           rows.add(
             _tableRow(
               cells: _segmentPaceCells(),
-              height: heights[next],
+              height: heights[next++],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-pace',
@@ -197,10 +197,28 @@ extension _PaceTablePart on _PaceViewState {
               ),
             ),
           );
+          if (elevationOn) {
+            rows.add(
+              _tableRow(
+                cells: _elevationCells(),
+                height: heights[next++],
+                expanded: _fitTable,
+                total: _elevationTotalCell(),
+              ),
+            );
+          }
+          if (stripOn) {
+            rows.add(
+              _elevationStripRow(
+                height: heights[next++],
+                width: compactDataWidth,
+              ),
+            );
+          }
           rows.add(
             _tableRow(
               cells: _planTimeCells(),
-              height: heights[next + 1],
+              height: heights[next++],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-time',
@@ -222,7 +240,7 @@ extension _PaceTablePart on _PaceViewState {
           rows.add(
             _tableRow(
               cells: _planPaceCells(),
-              height: heights[next + 2],
+              height: heights[next++],
               expanded: _fitTable,
               total: _totalValueCell(
                 key: 'pace-total-plan-pace',
@@ -247,7 +265,7 @@ extension _PaceTablePart on _PaceViewState {
             rows.add(
               _tableRow(
                 cells: _stopsCells(compact: true),
-                height: heights[next + 3],
+                height: heights[next++],
                 expanded: _fitTable,
                 total: _totalValueCell(
                   key: 'pace-total-stops',
@@ -262,7 +280,7 @@ extension _PaceTablePart on _PaceViewState {
               values: _water,
               keyPrefix: 'pace-water',
               title: AppStrings.paceRowWater,
-              height: heights[next + 3 + stopsOn],
+              height: heights[next++],
               expanded: _fitTable,
               showFirstPlaceholder: false,
               total: _totalBlankCell(),
@@ -273,7 +291,7 @@ extension _PaceTablePart on _PaceViewState {
               values: _food,
               keyPrefix: 'pace-food',
               title: AppStrings.paceRowFood,
-              height: heights[next + 4 + stopsOn],
+              height: heights[next++],
               expanded: _fitTable,
               showFirstPlaceholder: false,
               total: _totalBlankCell(),
@@ -390,17 +408,8 @@ extension _PaceTablePart on _PaceViewState {
         }
 
         if (compact) {
-          const labelWidth = 58.0;
-          final availableWidth = math.max(
-            1.0,
-            constraints.maxWidth - labelWidth,
-          );
-          final tableWidth = _fitTable
-              ? availableWidth
-              : _columns * _PaceViewState._fixedCellWidth + _totalColumnWidth;
-
           final table = SizedBox(
-            width: tableWidth,
+            width: compactTableWidth,
             child: Column(
               children: [
                 for (var index = 0; index < rows.length; index++) ...[
@@ -415,7 +424,7 @@ extension _PaceTablePart on _PaceViewState {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: labelWidth,
+                width: compactLabelWidth,
                 child: Column(
                   children: [
                     for (var index = 0; index < labels.length; index++) ...[

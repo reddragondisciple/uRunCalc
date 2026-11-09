@@ -341,14 +341,14 @@ extension _PaceTableCellsPart on _PaceViewState {
       if (index == 0) {
         return _interactiveCell(
           key: 'pace-plan-pace-0',
-          text: '↓\npace',
-          maxLines: 2,
+          text: '↕',
+          maxLines: 1,
           fontSize: 14,
           result: true,
-          color: Colors.white,
+          color: Colors.grey,
           dayBorder: _dayBorderColor(index, _planDays),
           boldBorder: _boldColumns.contains(index),
-          onTap: _hideKeyboard,
+          onTap: _toggleStopsRow,
           onLongPress: _toggleStopsRow,
         );
       }
@@ -431,6 +431,7 @@ extension _PaceTableCellsPart on _PaceViewState {
 
   void _toggleStopsRow() {
     _hideKeyboard();
+    unawaited(HapticFeedback.selectionClick());
     _update(() => _stopsRowOpen = !_stopsRowOpen, persist: false);
   }
 }

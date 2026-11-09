@@ -2224,7 +2224,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-plan-pace-0')),
-        matching: find.text('↓\npace'),
+        matching: find.text('↕'),
       ),
       findsOneWidget,
     );
@@ -2732,6 +2732,24 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('tap on plan pace toggle opens the stops row', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Ultra');
+
+    expect(find.byKey(const ValueKey('pace-stop-1')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('pace-plan-pace-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pace-stop-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('pace-plan-pace-0')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pace-stop-1')), findsNothing);
   });
 
   testWidgets('long press on plan pace opens the stops row', (tester) async {
