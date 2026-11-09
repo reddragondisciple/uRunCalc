@@ -43,6 +43,129 @@ void main() {
     });
   });
 
+  group('split table', () {
+    test('builds points every kilometre with arrival time', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 5,
+        splitKm: 1,
+        paceSeconds: 385,
+      );
+
+      expect(points, hasLength(5));
+      expect(points.first.distanceKm, 1);
+      expect(points.first.seconds, 385);
+      expect(points.last.distanceKm, 5);
+      expect(points.last.seconds, 1925);
+      expect(
+        PaceTableCalculator.formatClockTime(points.last.seconds),
+        '0:32:05',
+      );
+    });
+
+    test('adds the start time and wraps after midnight', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 2,
+        splitKm: 1,
+        paceSeconds: 600,
+        startSeconds: 23 * 3600,
+      );
+
+      expect(
+        points.map(
+          (point) => PaceTableCalculator.formatClockTime(point.seconds),
+        ),
+        ['23:10:00', '23:20:00'],
+      );
+
+      expect(PaceTableCalculator.formatClockTime(24 * 3600 + 385), '0:06:25');
+    });
+
+    test('uses metres for a fractional split', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 2,
+        splitKm: 0.5,
+        paceSeconds: 300,
+      );
+
+      expect(points, hasLength(4));
+      expect(PaceTableCalculator.splitDistanceLabel(0.5, 1), '500 м');
+      expect(PaceTableCalculator.splitDistanceLabel(0.5, 3), '1500 м');
+      expect(PaceTableCalculator.splitDistanceLabel(1, 3), '3 км');
+    });
+
+    test('adds the finish as the last point for a fractional distance', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 2.4,
+        splitKm: 1,
+        paceSeconds: 300,
+      );
+
+      expect(points.map((point) => point.distanceKm), [1, 2, 2.4]);
+      expect(points.last.isFinish, isTrue);
+      expect(points.last.seconds, 720);
+      expect(points[0].isFinish, isFalse);
+      expect(points[1].isFinish, isFalse);
+    });
+
+    test('does not duplicate the finish for an exact distance', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 5,
+        splitKm: 1,
+        paceSeconds: 300,
+      );
+
+      expect(points, hasLength(5));
+      expect(points.last.distanceKm, 5);
+      expect(points.any((point) => point.isFinish), isFalse);
+    });
+
+    test(
+      'shows a finish-only point when the distance is shorter than split',
+      () {
+        final points = PaceTableCalculator.splitPoints(
+          distanceKm: 0.5,
+          splitKm: 1,
+          paceSeconds: 300,
+        );
+
+        expect(points, hasLength(1));
+        expect(points.single.distanceKm, 0.5);
+        expect(points.single.isFinish, isTrue);
+      },
+    );
+
+    test('caps the number of rows', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 100,
+        splitKm: 0.001,
+        paceSeconds: 300,
+      );
+
+      expect(points, hasLength(PaceTableCalculator.maxSplitRows));
+    });
+
+    test('formats durations without wrapping at midnight', () {
+      expect(PaceTableCalculator.formatDurationSeconds(0), '0:00:00');
+      expect(PaceTableCalculator.formatDurationSeconds(385), '0:06:25');
+      expect(
+        PaceTableCalculator.formatDurationSeconds(25 * 3600 + 5),
+        '25:00:05',
+      );
+      expect(
+        PaceTableCalculator.formatDurationSeconds(3 * 3600 + 30 * 60 + 59),
+        '3:30:59',
+      );
+    });
+
+    test('formats distances without trailing zeros', () {
+      expect(PaceTableCalculator.formatDistanceValue(42.195), '42.195');
+      expect(PaceTableCalculator.formatDistanceValue(21.097), '21.097');
+      expect(PaceTableCalculator.formatDistanceValue(21.1), '21.1');
+      expect(PaceTableCalculator.formatDistanceValue(10), '10');
+      expect(PaceTableCalculator.formatDistanceValue(0.5), '0.5');
+    });
+  });
+
   group('day boundaries', () {
     test('increments the day when time jumps backwards', () {
       expect(

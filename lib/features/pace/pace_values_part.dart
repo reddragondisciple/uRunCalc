@@ -5,6 +5,13 @@ extension _PaceValuesPart on _PaceViewState {
 
   double? get _distanceValue => parseDecimal(_distance);
 
+  double? get _splitDistanceValue => parseDecimal(_splitDistance);
+
+  /// Время старта в минутах от полуночи. Пустые поля означают 00:00.
+  int get _startTimeMinutes =>
+      (int.tryParse(_startHours.trim()) ?? 0) * 60 +
+      (int.tryParse(_startMinutes.trim()) ?? 0);
+
   int? get _paceValue {
     if (_paceMinutes.trim().isEmpty && _paceSeconds.trim().isEmpty) {
       return null;
@@ -39,6 +46,24 @@ extension _PaceValuesPart on _PaceViewState {
     return (distance * pace).round();
   }
 
+  /// Действующее расстояние для раскладки: введённое или вычисленное.
+  double? get _effectiveDistance => switch (_calc) {
+    _PaceCalc.distance => _computedDistance,
+    _PaceCalc.pace || _PaceCalc.time => _distanceValue,
+  };
+
+  /// Действующий темп для раскладки: введённый или вычисленный.
+  int? get _effectivePace => switch (_calc) {
+    _PaceCalc.pace => _computedPace,
+    _PaceCalc.distance || _PaceCalc.time => _paceValue,
+  };
+
+  /// Действующее время для раскладки: введённое или вычисленное.
+  int? get _effectiveTime => switch (_calc) {
+    _PaceCalc.time => _computedTime,
+    _PaceCalc.pace || _PaceCalc.distance => _timeValue,
+  };
+
   bool _isPaceField(_PaceTopField field) {
     return field == _PaceTopField.paceMinutes ||
         field == _PaceTopField.paceSeconds;
@@ -52,10 +77,17 @@ extension _PaceValuesPart on _PaceViewState {
   }
 
   bool _isTopEditable(_PaceTopField field) {
+    final isSplitField =
+        field == _PaceTopField.splitDistance ||
+        field == _PaceTopField.startHours ||
+        field == _PaceTopField.startMinutes;
     return switch (_calc) {
-      _PaceCalc.pace => field == _PaceTopField.distance || _isTimeField(field),
-      _PaceCalc.distance => _isPaceField(field) || _isTimeField(field),
-      _PaceCalc.time => field == _PaceTopField.distance || _isPaceField(field),
+      _PaceCalc.pace =>
+        field == _PaceTopField.distance || _isTimeField(field) || isSplitField,
+      _PaceCalc.distance =>
+        _isPaceField(field) || _isTimeField(field) || isSplitField,
+      _PaceCalc.time =>
+        field == _PaceTopField.distance || _isPaceField(field) || isSplitField,
     };
   }
 

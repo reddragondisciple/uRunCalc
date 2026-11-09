@@ -270,7 +270,7 @@ extension _PaceInputPart on _PaceViewState {
     _update(() {
       switch (field) {
         case _PaceTopField.distance:
-          _distance = _appendDecimal(_distance, char);
+          _distance = _appendDecimal(_distance, char, maxDecimals: 3);
         case _PaceTopField.paceMinutes:
           _paceMinutes = _appendInteger(_paceMinutes, char, 3);
         case _PaceTopField.paceSeconds:
@@ -284,6 +284,12 @@ extension _PaceInputPart on _PaceViewState {
             field,
             _appendInteger(_topTimeValue(field), char, 2),
           );
+        case _PaceTopField.splitDistance:
+          _splitDistance = _appendDecimal(_splitDistance, char, maxDecimals: 3);
+        case _PaceTopField.startHours:
+          _startHours = _appendInteger(_startHours, char, 2);
+        case _PaceTopField.startMinutes:
+          _startMinutes = _appendInteger(_startMinutes, char, 2);
       }
     });
   }
@@ -293,7 +299,7 @@ extension _PaceInputPart on _PaceViewState {
     return '$current$char';
   }
 
-  String _appendDecimal(String current, String char) {
+  String _appendDecimal(String current, String char, {int maxDecimals = 2}) {
     if (char == '.') {
       if (current.contains('.')) return current;
       return current.isEmpty ? '0.' : '$current.';
@@ -307,7 +313,7 @@ extension _PaceInputPart on _PaceViewState {
       return '$current$char';
     }
 
-    if (current.length - dot - 1 >= 2) return current;
+    if (current.length - dot - 1 >= maxDecimals) return current;
     return '$current$char';
   }
 
@@ -368,6 +374,12 @@ extension _PaceInputPart on _PaceViewState {
             case _PaceTopField.minutes:
             case _PaceTopField.seconds:
               _setTopTimeValue(field, _removeLast(_topTimeValue(field)));
+            case _PaceTopField.splitDistance:
+              _splitDistance = _removeLast(_splitDistance);
+            case _PaceTopField.startHours:
+              _startHours = _removeLast(_startHours);
+            case _PaceTopField.startMinutes:
+              _startMinutes = _removeLast(_startMinutes);
           }
         case _PaceFocusKind.tableTime:
           _tableTimes[_focus.tableColumn] = _removeLast(
@@ -424,6 +436,12 @@ extension _PaceInputPart on _PaceViewState {
             case _PaceTopField.minutes:
             case _PaceTopField.seconds:
               _setTopTimeValue(field, '');
+            case _PaceTopField.splitDistance:
+              _splitDistance = '';
+            case _PaceTopField.startHours:
+              _startHours = '';
+            case _PaceTopField.startMinutes:
+              _startMinutes = '';
           }
         case _PaceFocusKind.tableTime:
           _tableTimes[_focus.tableColumn] = '';

@@ -97,6 +97,26 @@ class AppStrings {
   static const String paceHintKm = 'км';
   static const String paceHintPace = 'мин/км';
 
+  static const String paceCalcSplit = 'Раскладка на';
+  static const String paceCalcStartTime = 'Время старта';
+  static const String paceDistancePresets = 'Готовые дистанции';
+  static const String paceSplitTableDistance = 'Дистанция';
+  static const String paceSplitTableTime = 'Время';
+  static const String paceSplitPrintButton = 'Печать';
+  static const String paceSplitPrintTitle = 'Печать раскладки';
+  static const String paceSplitPrintDocumentTitle =
+      'Раскладка по контрольным точкам';
+  static const String paceSplitPrintDescription =
+      'Печать откроет системный диалог: можно выбрать сетевой '
+      'принтер или сохранить документ в PDF.';
+  static const String paceSplitPrintStart = 'Старт';
+  static const String paceSplitFinish = 'Финиш';
+  static const String paceNormativeMale = 'М';
+  static const String paceNormativeFemale = 'Ж';
+
+  static String paceSplitTruncated(int count) =>
+      'Показаны первые $count контрольных точек';
+
   // Pace и Ultra: мероприятия и дистанции.
   static const String paceEventTitle = 'Мероприятие';
   static const String paceEventAdd = '+ Добавить мероприятие';

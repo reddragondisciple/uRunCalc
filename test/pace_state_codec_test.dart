@@ -70,6 +70,9 @@ void main() {
         hours: '02',
         minutes: '03',
         seconds: '04',
+        splitDistance: '0.5',
+        startHours: '06',
+        startMinutes: '30',
       );
 
       final restored = PaceStateCodec.decodeCalculator(

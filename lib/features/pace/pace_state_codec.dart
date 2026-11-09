@@ -13,6 +13,9 @@ class PaceCalculatorState {
     this.hours = '',
     this.minutes = '',
     this.seconds = '',
+    this.splitDistance = '',
+    this.startHours = '',
+    this.startMinutes = '',
   });
 
   /// Восстанавливает поля из JSON, подставляя пустые строки вместо
@@ -28,6 +31,9 @@ class PaceCalculatorState {
       hours: _readString(data['hours']),
       minutes: _readString(data['minutes']),
       seconds: _readString(data['seconds']),
+      splitDistance: _readString(data['splitDistance']),
+      startHours: _readString(data['startHours']),
+      startMinutes: _readString(data['startMinutes']),
     );
   }
 
@@ -40,6 +46,13 @@ class PaceCalculatorState {
   final String minutes;
   final String seconds;
 
+  /// Шаг равномерной раскладки в километрах.
+  final String splitDistance;
+
+  /// Часы и минуты времени старта. Пустые строки означают 00:00.
+  final String startHours;
+  final String startMinutes;
+
   Map<String, dynamic> toJson() {
     return {
       'calc': calc,
@@ -50,6 +63,9 @@ class PaceCalculatorState {
       'hours': hours,
       'minutes': minutes,
       'seconds': seconds,
+      'splitDistance': splitDistance,
+      'startHours': startHours,
+      'startMinutes': startMinutes,
     };
   }
 

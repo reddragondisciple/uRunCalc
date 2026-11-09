@@ -28,6 +28,8 @@ import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
 import 'mountain_data.dart';
 import 'pace_calculations.dart';
+import 'pace_normatives.dart';
+import 'pace_split_print.dart';
 import 'pace_cells.dart';
 import 'pace_keyboard.dart';
 import 'pace_catalog.dart';
@@ -57,6 +59,9 @@ enum _PaceTopField {
   hours,
   minutes,
   seconds,
+  splitDistance,
+  startHours,
+  startMinutes,
 }
 
 class _PrintRequest {
@@ -173,6 +178,13 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   String _hours = '';
   String _minutes = '';
   String _seconds = '';
+
+  /// Шаг равномерной раскладки, км. Пусто — таблица раскладки не строится.
+  String _splitDistance = '';
+
+  /// Время старта: часы и минуты. Пустые поля отображаются как 00:00.
+  String _startHours = '';
+  String _startMinutes = '';
 
   int _columns = _baseColumns;
   bool _fitTable = true;
@@ -369,6 +381,9 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           hours: _hours,
           minutes: _minutes,
           seconds: _seconds,
+          splitDistance: _splitDistance,
+          startHours: _startHours,
+          startMinutes: _startMinutes,
         ),
       );
     }
@@ -434,6 +449,9 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
     _hours = state.hours;
     _minutes = state.minutes;
     _seconds = state.seconds;
+    _splitDistance = state.splitDistance;
+    _startHours = state.startHours;
+    _startMinutes = state.startMinutes;
   }
 
   void _applyUltraState(Map<String, dynamic> data) {

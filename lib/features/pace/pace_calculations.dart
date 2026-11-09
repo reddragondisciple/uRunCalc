@@ -6,6 +6,22 @@ enum PaceHighlight { none, fastest, secondFastest }
 /// Насколько план отклонился от лимита на конкретной колонке.
 enum PlanTimeStatus { normal, behindLimit, closeToLimit }
 
+/// Контрольная точка равномерной раскладки: расстояние от старта и время
+/// прибытия в неё (уже с учётом времени старта).
+class PaceSplitPoint {
+  const PaceSplitPoint({
+    required this.distanceKm,
+    required this.seconds,
+    this.isFinish = false,
+  });
+
+  final double distanceKm;
+  final int seconds;
+
+  /// Отдельная финишная точка, добавленная после последнего чекпойнта.
+  final bool isFinish;
+}
+
 /// Чистые расчёты таблицы Pace/Ultra: разбор времени и темпа, дни,
 /// накопленное время, плановые показатели и подсветка.
 class PaceTableCalculator {
@@ -94,6 +110,109 @@ class PaceTableCalculator {
     if (decimals == 1) return value.toStringAsFixed(1);
     return value.toStringAsFixed(2);
   }
+
+  /// Максимум строк в таблице раскладки: защита от ввода вроде
+  /// «100 км с шагом 0.001 км».
+  static const int maxSplitRows = 1000;
+
+  /// Строит контрольные точки через [splitKm] километров до [distanceKm].
+  /// Время прибытия считается от [startSeconds] (время суток старта) плюс
+  /// темп на пройденное расстояние. Точки, выходящие за дистанцию, не
+  /// добавляются, а последняя точка всегда совпадает с финишем: при дробном
+  /// расстоянии добавляется отдельный финишный пункт.
+  static List<PaceSplitPoint> splitPoints({
+    required double distanceKm,
+    required double splitKm,
+    required int paceSeconds,
+    int startSeconds = 0,
+    int maxPoints = maxSplitRows,
+  }) {
+    if (distanceKm <= 0 || splitKm <= 0 || paceSeconds <= 0) {
+      return const <PaceSplitPoint>[];
+    }
+
+    final ratio = distanceKm / splitKm;
+    if (!ratio.isFinite || ratio <= 0) return const <PaceSplitPoint>[];
+
+    final rounded = ratio.roundToDouble();
+    final count = (ratio - rounded).abs() < 1e-9
+        ? rounded.toInt()
+        : ratio.floor();
+
+    final points = <PaceSplitPoint>[];
+    if (count > 0) {
+      final limit = count > maxPoints ? maxPoints : count;
+      for (var index = 0; index < limit; index++) {
+        final checkpoint = splitKm * (index + 1);
+        points.add(
+          PaceSplitPoint(
+            distanceKm: checkpoint,
+            seconds: startSeconds + (paceSeconds * checkpoint).round(),
+          ),
+        );
+      }
+    }
+
+    final last = points.isEmpty ? null : points.last;
+    final lastIsFinish =
+        last != null && (last.distanceKm - distanceKm).abs() < 1e-9;
+    if (!lastIsFinish && points.length < maxPoints) {
+      points.add(
+        PaceSplitPoint(
+          distanceKm: distanceKm,
+          seconds: startSeconds + (paceSeconds * distanceKm).round(),
+          isFinish: true,
+        ),
+      );
+    }
+
+    return points;
+  }
+
+  /// Подпись контрольной точки. Если шаг раскладки целый, показываем
+  /// километры, иначе — метры: «1 км» или «500 м».
+  static String splitDistanceLabel(double splitKm, int index) {
+    final distanceKm = splitKm * index;
+    if (_isWhole(splitKm)) {
+      return '${distanceKm.round()} км';
+    }
+    return '${(distanceKm * 1000).round()} м';
+  }
+
+  /// Форматирует время суток как `ч:мм:сс`. Значение циклично, поэтому
+  /// прибытие после полуночи показывается как `0:06:25`, а не `24:06:25`.
+  static String formatClockTime(int totalSeconds) {
+    const secondsPerDay = 24 * 60 * 60;
+    final inDay =
+        ((totalSeconds % secondsPerDay) + secondsPerDay) % secondsPerDay;
+    return formatDurationSeconds(inDay);
+  }
+
+  /// Форматирует длительность как `ч:мм:сс` без ограничения часов.
+  static String formatDurationSeconds(int totalSeconds) {
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$hours:${minutes.toString().padLeft(2, '0')}'
+        ':${seconds.toString().padLeft(2, '0')}';
+  }
+
+  /// Форматирует расстояние без лишних нулей: `42.195`, `21.1`, `10`.
+  static String formatDistanceValue(double value, {int maxDecimals = 3}) {
+    if (!value.isFinite) return '';
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    var text = value.toStringAsFixed(maxDecimals);
+    while (text.endsWith('0')) {
+      text = text.substring(0, text.length - 1);
+    }
+    if (text.endsWith('.')) {
+      text = text.substring(0, text.length - 1);
+    }
+    return text;
+  }
+
+  static bool _isWhole(double value) =>
+      (value - value.roundToDouble()).abs() < 1e-9;
 
   /// Номер дня для каждой колонки. Скачок времени назад означает новый день.
   static List<int> computeDays(List<String> times, {int? columns}) {

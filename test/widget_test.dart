@@ -1305,6 +1305,180 @@ void main() {
     );
   });
 
+  testWidgets('pace distance accepts thousandths', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '1.234');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('1.234'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('pace split table uses the preset distance and start time', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('pace-distance-presets')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-distance-presets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-distance-preset-10')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('10'),
+      ),
+      findsOneWidget,
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-start-hours')),
+        matching: find.text('00'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-start-minutes')),
+        matching: find.text('00'),
+      ),
+      findsOneWidget,
+    );
+
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+    await enterPaceValue(tester, 'pace-split', '1');
+    await enterPaceValue(tester, 'pace-start-hours', '06');
+    await enterPaceValue(tester, 'pace-start-minutes', '30');
+
+    expect(find.byKey(const ValueKey('pace-split-table')), findsOneWidget);
+    expect(find.text('1 км'), findsOneWidget);
+    expect(find.text('10 км'), findsOneWidget);
+    expect(find.text('6:36:00'), findsOneWidget);
+    expect(find.text('7:30:00'), findsOneWidget);
+  });
+
+  testWidgets(
+    'pace split table ends with the finish for a fractional distance',
+    (tester) async {
+      usePhoneSize(tester);
+      await pumpCalculator(tester);
+      await switchMode(tester, 'Pace');
+
+      await enterPaceValue(tester, 'pace-distance', '2.4');
+      await enterPaceValue(tester, 'pace-time-minutes', '12');
+      await enterPaceValue(tester, 'pace-split', '1');
+
+      expect(find.byKey(const ValueKey('pace-split-table')), findsOneWidget);
+      expect(find.text('1 км'), findsOneWidget);
+      expect(find.text('2 км'), findsOneWidget);
+      expect(find.text('Финиш'), findsOneWidget);
+      expect(find.text('0:12:00'), findsOneWidget);
+    },
+  );
+
+  testWidgets('pace split row shows the achieved categories', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '42.195');
+    await enterPaceValue(tester, 'pace-time-hours', '2');
+    await enterPaceValue(tester, 'pace-time-minutes', '35');
+    await enterPaceValue(tester, 'pace-split', '5');
+
+    expect(find.text('М — I'), findsOneWidget);
+    expect(find.text('Ж — МС'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pace-split-print')), findsOneWidget);
+  });
+
+  testWidgets('pace split row hides categories for a non-standard distance', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '7');
+    await enterPaceValue(tester, 'pace-time-minutes', '30');
+    await enterPaceValue(tester, 'pace-split', '1');
+
+    expect(find.byKey(const ValueKey('pace-split-table')), findsOneWidget);
+    expect(find.textContaining('М —'), findsNothing);
+    expect(find.textContaining('Ж —'), findsNothing);
+  });
+
+  testWidgets('pace split table works in distance mode', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await tester.tap(find.byKey(const ValueKey('pace-calc-distance')));
+    await tester.pumpAndSettle();
+
+    await enterPaceValue(tester, 'pace-pace-min', '5');
+    await enterPaceValue(tester, 'pace-time-hours', '1');
+    await enterPaceValue(tester, 'pace-split', '1');
+
+    expect(find.byKey(const ValueKey('pace-split-table')), findsOneWidget);
+    expect(find.text('1 км'), findsOneWidget);
+    expect(find.text('12 км'), findsOneWidget);
+  });
+
+  testWidgets('pace split table works in time mode', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await tester.tap(find.byKey(const ValueKey('pace-calc-time')));
+    await tester.pumpAndSettle();
+
+    await enterPaceValue(tester, 'pace-distance', '10');
+    await enterPaceValue(tester, 'pace-pace-min', '5');
+    await enterPaceValue(tester, 'pace-split', '1');
+
+    expect(find.byKey(const ValueKey('pace-split-table')), findsOneWidget);
+    expect(find.text('1 км'), findsOneWidget);
+    expect(find.text('10 км'), findsOneWidget);
+    expect(find.text('0:50:00'), findsOneWidget);
+  });
+
+  testWidgets('pace split print button opens the print dialog', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '5');
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+    await enterPaceValue(tester, 'pace-split', '1');
+
+    await tester.ensureVisible(find.byKey(const ValueKey('pace-split-print')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-split-print')));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.paceSplitPrintTitle), findsOneWidget);
+    expect(find.text('PDF'), findsOneWidget);
+    expect(find.text(AppStrings.cancel), findsOneWidget);
+
+    await tester.tap(find.text(AppStrings.cancel));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     'ultra keyboard appears on tap, hides outside and commits by OK',
     (tester) async {
