@@ -5,12 +5,19 @@ library;
 
 /// Сегмент плана между двумя колонками ПП.
 class PlanSegment {
-  const PlanSegment({required this.distanceKm, required this.gapFactor});
+  const PlanSegment({
+    required this.distanceKm,
+    required this.gapFactor,
+    this.environmentFactor = 1.0,
+  });
 
   final double distanceKm;
 
   /// Из `SegmentStats.gapFactor`. `1`, если высот нет.
   final double gapFactor;
+
+  /// Покрытие × погода × кроссовки на сегменте. `1`, если окружение выключено.
+  final double environmentFactor;
 }
 
 /// Итог расчёта: ходовые времена сегментов, прибытия и итоги.
@@ -40,7 +47,8 @@ List<double> movingFromFlatPace(
   double flatPaceSecPerKm,
 ) {
   return [
-    for (final s in segments) s.distanceKm * flatPaceSecPerKm * s.gapFactor,
+    for (final s in segments)
+      s.distanceKm * flatPaceSecPerKm * s.gapFactor * s.environmentFactor,
   ];
 }
 

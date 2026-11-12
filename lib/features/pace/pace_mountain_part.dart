@@ -220,6 +220,7 @@ extension _PaceMountainPart on _PaceViewState {
       _clearDerivedTrackCache();
       _recomputeMountainPlan();
     }, persist: false);
+    _refreshEnvironmentIfEnabled();
     _showMessage(AppStrings.paceTrackImportApplied);
   }
 
@@ -318,9 +319,15 @@ extension _PaceMountainPart on _PaceViewState {
     _cachedElevationColumns = -1;
     _cachedPlanSegments = null;
     _cachedPlanTrack = null;
+    _cachedPlanEnvironment = null;
     _cachedPlanColumns = -1;
     _cachedProfile = null;
     _cachedProfileTrack = null;
+    // Окружение привязано к треку: после его смены старые множители
+    // недействительны и будут пересчитаны заново.
+    _environmentData = null;
+    _environmentLoading = false;
+    _environmentRequest++;
   }
 
   void _trimTrackCache() {
@@ -407,6 +414,7 @@ extension _PaceMountainPart on _PaceViewState {
             _clearDerivedTrackCache();
             _recomputeMountainPlan();
           }, persist: false);
+          _refreshEnvironmentIfEnabled();
           return;
         }
 
@@ -433,6 +441,7 @@ extension _PaceMountainPart on _PaceViewState {
             _loadedTrackKey = key;
             _clearDerivedTrackCache();
           }, persist: false);
+          _refreshEnvironmentIfEnabled();
           return;
         }
 
@@ -454,6 +463,7 @@ extension _PaceMountainPart on _PaceViewState {
             _loadedTrackKey = key;
             _clearDerivedTrackCache();
           }, persist: false);
+          _refreshEnvironmentIfEnabled();
           return;
         }
 
@@ -467,6 +477,7 @@ extension _PaceMountainPart on _PaceViewState {
           // Новый трек меняет высоты сегментов — план пересчитывается.
           _recomputeMountainPlan();
         }, persist: false);
+        _refreshEnvironmentIfEnabled();
         return;
       }
     } catch (error) {
@@ -512,6 +523,7 @@ extension _PaceMountainPart on _PaceViewState {
       totalAscentM: elevation?.totalAscentM ?? 0,
       totalDescentM: elevation?.totalDescentM ?? 0,
       boundariesKm: [for (final km in kms) ?km],
+      environment: _environmentData,
     );
   }
 

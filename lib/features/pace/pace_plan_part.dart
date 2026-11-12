@@ -78,23 +78,46 @@ extension _PacePlanPart on _PaceViewState {
   /// изменение дистанций, а не на каждую клетку и не на каждый предпросмотр.
   List<PlanSegment> _planSegments() {
     final parsed = _loadedTrack;
+    final environment = _environmentData;
     if (identical(parsed, _cachedPlanTrack) &&
+        identical(environment, _cachedPlanEnvironment) &&
         _cachedPlanColumns == _columns &&
         listEquals(_cachedPlanDistances, _tableDistances) &&
         _cachedPlanSegments != null) {
       return _cachedPlanSegments!;
     }
-    final segments = planSegmentsForColumns(
+    final base = planSegmentsForColumns(
       parsed: parsed,
       columnDistancesKm: [
         for (final value in _tableDistances) parseDecimal(value) ?? 0,
       ],
     );
+    final segments = environment == null
+        ? base
+        : [
+            for (var index = 0; index < base.length; index++)
+              PlanSegment(
+                distanceKm: base[index].distanceKm,
+                gapFactor: base[index].gapFactor,
+                environmentFactor: _environmentFactorForSegment(index),
+              ),
+          ];
     _cachedPlanTrack = parsed;
+    _cachedPlanEnvironment = environment;
     _cachedPlanColumns = _columns;
     _cachedPlanDistances = List<String>.of(_tableDistances);
     _cachedPlanSegments = segments;
     return segments;
+  }
+
+  /// Средний множитель окружения на сегменте `index → index+1`.
+  double _environmentFactorForSegment(int index) {
+    final environment = _environmentData;
+    if (environment == null || index + 1 >= _tableDistances.length) return 1.0;
+    final startKm = parseDecimal(_tableDistances[index]) ?? 0;
+    final endKm = parseDecimal(_tableDistances[index + 1]) ?? 0;
+    if (endKm <= startKm) return 1.0;
+    return environment.factorBetween(startKm * 1000, endKm * 1000);
   }
 
   /// Текст предпросмотра «Плоский 6:00 → расчётный 6:38, итог 12:34 (со

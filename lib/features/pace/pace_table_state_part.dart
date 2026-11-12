@@ -20,6 +20,7 @@ extension _PaceTableStatePart on _PaceViewState {
       seeded: _seeded,
       boldColumns: List<int>.of(_boldColumns),
       mountain: _currentTableMountain(),
+      environment: _environment,
     );
   }
 
@@ -70,6 +71,7 @@ extension _PaceTableStatePart on _PaceViewState {
     _tracks = data.mountain.tracks;
     _planAnchor = data.mountain.anchor;
     _stopsSec = data.mountain.stopsSec;
+    _environment = data.environment;
     _columns = data.columns.clamp(3, _PaceViewState._maxColumns);
     _boldColumns.addAll(
       data.boldColumns.where((index) => index >= 0 && index < _columns),
@@ -116,6 +118,7 @@ extension _PaceTableStatePart on _PaceViewState {
     _tracks = TrackSlots.empty;
     _planAnchor = null;
     _stopsSec = const <int>[];
+    _environment = EnvironmentSettings.empty;
     final clamped = columns.clamp(3, _PaceViewState._maxColumns).toInt();
     _columns = clamped;
     _fitTable = true;

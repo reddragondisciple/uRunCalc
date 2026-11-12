@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_strings.dart';
 import '../gpx/elevation_format.dart';
 import '../gpx/elevation_profile.dart';
+import 'environment_data.dart';
 
 /// Маркер ПП на профиле: километраж и подпись.
 class ElevationMarker {
@@ -39,6 +40,43 @@ double distanceGridStep(double rangeKm) {
   return 20;
 }
 
+/// Цвет линии покрытия на графике. Легенды нет, цвет только различает типы.
+Color surfaceOverlayColor(SurfaceType type) => switch (type) {
+  SurfaceType.asphalt => const Color(0xFFB0BEC5),
+  SurfaceType.concrete => const Color(0xFFCFD8DC),
+  SurfaceType.pavingStones => const Color(0xFFD7B377),
+  SurfaceType.compacted => const Color(0xFFC8A96B),
+  SurfaceType.dirt => const Color(0xFF8D6E63),
+  SurfaceType.ground => const Color(0xFF795548),
+  SurfaceType.grass => const Color(0xFF66BB6A),
+  SurfaceType.sand => const Color(0xFFE6C86E),
+  SurfaceType.mud => const Color(0xFF4E342E),
+  SurfaceType.snowPacked => const Color(0xFFB3E5FC),
+  SurfaceType.snowDeep => const Color(0xFFE1F5FE),
+  SurfaceType.unknown => const Color(0xFF8D6E63),
+};
+
+/// Прозрачность синей линии мокрости.
+Color wetnessOverlayColor(Wetness wetness) => switch (wetness) {
+  Wetness.dry => const Color(0x2664B5F6),
+  Wetness.damp => const Color(0x6681D4FA),
+  Wetness.wet => const Color(0xAA42A5F5),
+  Wetness.saturated => const Color(0xDD29B6F6),
+  Wetness.bog => const Color(0xEE26C6DA),
+};
+
+/// Цвет полупрозрачной полосы по «ощущается как». Без легенды.
+Color apparentTemperatureColor(double apparentC) {
+  if (apparentC <= -15) return const Color(0xFF3949AB);
+  if (apparentC <= -5) return const Color(0xFF42A5F5);
+  if (apparentC <= 5) return const Color(0xFF4DD0E1);
+  if (apparentC <= 15) return const Color(0xFF81C784);
+  if (apparentC <= 22) return const Color(0xFFFFF176);
+  if (apparentC <= 28) return const Color(0xFFFFB74D);
+  if (apparentC <= 35) return const Color(0xFFFF7043);
+  return const Color(0xFFD32F2F);
+}
+
 /// Рисует профиль: сетку, линию с цветом по крутизне, маркеры ПП и
 /// подсветку тапа. Путь строится один раз на данные и диапазон.
 class ElevationProfilePainter extends CustomPainter {
@@ -48,6 +86,7 @@ class ElevationProfilePainter extends CustomPainter {
     required this.toKm,
     required this.markers,
     this.touchKm,
+    this.environment,
   });
 
   final List<ProfilePoint> profile;
@@ -55,6 +94,9 @@ class ElevationProfilePainter extends CustomPainter {
   final double toKm;
   final List<ElevationMarker> markers;
   final double? touchKm;
+
+  /// Покрытие, мокрость, болота, броды и погода. `null` — слой не рисуется.
+  final EnvironmentData? environment;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -77,7 +119,17 @@ class ElevationProfilePainter extends CustomPainter {
     double yOf(double ele) =>
         size.height - (ele - floorE) / rangeE * size.height;
 
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+
+    // Погодная полоса — за сеткой и профилем, у верхнего края.
+    _paintWeatherBand(canvas, size, xOf);
+
     _paintGrid(canvas, size, floorE, topE, altStep, xOf, yOf);
+
+    // Низ графика: болото, мокрость и линия покрытия.
+    _paintSurfaceOverlays(canvas, size, xOf);
+    _paintFords(canvas, size, xOf);
 
     // Линия по сегментам с цветом класса крутизны.
     final paint = Paint()
@@ -107,6 +159,133 @@ class ElevationProfilePainter extends CustomPainter {
           ..color = Colors.white70
           ..strokeWidth = 1,
       );
+    }
+    canvas.restore();
+  }
+
+  /// Полупрозрачная полоса по `apparent_temperature`. Нет прогноза — нет
+  /// полосы: климатические нормы не выдаём за погоду.
+  void _paintWeatherBand(
+    Canvas canvas,
+    Size size,
+    double Function(double) xOf,
+  ) {
+    final env = environment;
+    if (env == null || !env.hasForecast || env.weather.isEmpty) return;
+    final samples = [...env.weather]
+      ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+    final bandHeight = math.min(18.0, size.height * 0.12);
+    for (var i = 0; i < samples.length; i++) {
+      final sample = samples[i];
+      final km = sample.distanceM / 1000;
+      final prevKm = i == 0 ? fromKm : samples[i - 1].distanceM / 1000;
+      final nextKm = i == samples.length - 1
+          ? toKm
+          : samples[i + 1].distanceM / 1000;
+      final left = math.max(fromKm, (prevKm + km) / 2);
+      final right = math.min(toKm, (km + nextKm) / 2);
+      if (right <= left) continue;
+      final paint = Paint()
+        ..color = apparentTemperatureColor(
+          sample.apparentC,
+        ).withValues(alpha: 0.35);
+      canvas.drawRect(
+        Rect.fromLTRB(xOf(left), 0, xOf(right), bandHeight),
+        paint,
+      );
+    }
+  }
+
+  /// Низ графика: широкая полоса болота, синяя линия мокрости и линия
+  /// покрытия. Высота фиксированная, чтобы не отнимать место у профиля.
+  void _paintSurfaceOverlays(
+    Canvas canvas,
+    Size size,
+    double Function(double) xOf,
+  ) {
+    final env = environment;
+    if (env == null || env.surface.isEmpty) return;
+
+    final bottom = size.height;
+    const bogTop = 13.0;
+    const bogBottom = 7.0;
+    const wetnessY = 5.0;
+    const surfaceY = 1.5;
+
+    for (final run in env.surface) {
+      final startKm = run.startM / 1000;
+      final endKm = run.endM / 1000;
+      if (endKm < fromKm || startKm > toKm) continue;
+      final left = xOf(math.max(fromKm, startKm));
+      final right = xOf(math.min(toKm, endKm));
+      if (right <= left) continue;
+
+      if (run.isBog) {
+        canvas.drawRect(
+          Rect.fromLTRB(left, bottom - bogTop, right, bottom - bogBottom),
+          Paint()..color = const Color(0xFF6D4C41).withValues(alpha: 0.55),
+        );
+      }
+
+      canvas.drawLine(
+        Offset(left, bottom - wetnessY),
+        Offset(right, bottom - wetnessY),
+        Paint()
+          ..color = wetnessOverlayColor(run.wetness)
+          ..strokeWidth = 1.6,
+      );
+      canvas.drawLine(
+        Offset(left, bottom - surfaceY),
+        Offset(right, bottom - surfaceY),
+        Paint()
+          ..color = surfaceOverlayColor(run.type)
+          ..strokeWidth = 2.4,
+      );
+    }
+  }
+
+  /// Броды: сплошная синяя линия — подтверждённый, пунктир — возможный.
+  void _paintFords(Canvas canvas, Size size, double Function(double) xOf) {
+    final env = environment;
+    if (env == null || env.fords.isEmpty) return;
+    for (final ford in env.fords) {
+      final km = ford.distanceM / 1000;
+      if (km < fromKm || km > toKm) continue;
+      final x = xOf(km);
+      final paint = Paint()
+        ..color = const Color(0xFF40C4FF)
+        ..strokeWidth = 2;
+      final from = Offset(x, 0);
+      final to = Offset(x, size.height);
+      if (ford.confirmed) {
+        canvas.drawLine(from, to, paint);
+      } else {
+        _drawDashedLine(canvas, from, to, paint);
+      }
+    }
+  }
+
+  void _drawDashedLine(
+    Canvas canvas,
+    Offset from,
+    Offset to,
+    Paint paint, {
+    double dash = 4,
+    double gap = 4,
+  }) {
+    final delta = to - from;
+    final length = delta.distance;
+    if (length <= 0) return;
+    final direction = delta / length;
+    var travelled = 0.0;
+    while (travelled < length) {
+      final end = math.min(travelled + dash, length);
+      canvas.drawLine(
+        from + direction * travelled,
+        from + direction * end,
+        paint,
+      );
+      travelled = end + gap;
     }
   }
 
@@ -183,6 +362,7 @@ class ElevationProfilePainter extends CustomPainter {
       old.toKm != toKm ||
       old.touchKm != touchKm ||
       !identical(old.profile, profile) ||
+      !identical(old.environment, environment) ||
       old.markers.length != markers.length;
 }
 
@@ -194,6 +374,7 @@ class ElevationChartData {
     required this.totalAscentM,
     required this.totalDescentM,
     required this.boundariesKm,
+    this.environment,
   });
 
   final List<ProfilePoint> profile;
@@ -204,6 +385,9 @@ class ElevationChartData {
   /// Километраж колонок ПП от старта, по возрастанию. Используется для
   /// фокуса на сегменте «ПП i → ПП i+1».
   final List<double> boundariesKm;
+
+  /// Покрытие, мокрость, болота, броды и погода. `null` — слои не рисуются.
+  final EnvironmentData? environment;
 }
 
 /// Открывает карту: bottom sheet в портрете, полупрозрачный экран на весь
@@ -435,6 +619,7 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
                             toKm: _toKm,
                             markers: data.markers,
                             touchKm: _touchKm,
+                            environment: data.environment,
                           ),
                         ),
                       );

@@ -16,6 +16,17 @@ void main() {
       ], 360);
       expect(moving.single, closeTo(4680, 1e-9));
     });
+
+    test('множитель окружения умножается вместе с GAP', () {
+      final moving = movingFromFlatPace([
+        const PlanSegment(
+          distanceKm: 10,
+          gapFactor: 1.2,
+          environmentFactor: 1.1,
+        ),
+      ], 360);
+      expect(moving.single, closeTo(10 * 360 * 1.2 * 1.1, 1e-9));
+    });
   });
 
   group('normalizeMoving (targetTime / targetPace)', () {

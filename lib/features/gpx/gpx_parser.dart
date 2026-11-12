@@ -57,6 +57,7 @@ GpxTrack parseGpx(String source) {
   final lats = <double>[];
   final lons = <double>[];
   final eles = <double>[];
+  final times = <double>[];
   final segmentStarts = <int>[];
   var dropped = 0;
 
@@ -87,6 +88,7 @@ GpxTrack parseGpx(String source) {
       lats.add(lat);
       lons.add(lon);
       eles.add(_number(pt, 'ele') ?? double.nan);
+      times.add(_timeSeconds(pt));
     }
   }
 
@@ -98,6 +100,7 @@ GpxTrack parseGpx(String source) {
     lats: Float64List.fromList(lats),
     lons: Float64List.fromList(lons),
     eles: Float64List.fromList(eles),
+    timesSec: Float64List.fromList(times),
     segmentStarts: segmentStarts,
     waypoints: waypoints,
     droppedPoints: dropped,
@@ -137,4 +140,13 @@ double? _number(XmlElement element, String name) {
   final value = double.tryParse(raw.trim());
   if (value == null || !value.isFinite) return null;
   return value;
+}
+
+/// Время точки в epoch seconds UTC. `NaN`, если `time` нет или он битый.
+double _timeSeconds(XmlElement element) {
+  final raw = _childText(element, 'time');
+  if (raw == null || raw.isEmpty) return double.nan;
+  final parsed = DateTime.tryParse(raw);
+  if (parsed == null) return double.nan;
+  return parsed.toUtc().millisecondsSinceEpoch / 1000.0;
 }

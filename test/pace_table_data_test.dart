@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ultra_run_calc/features/pace/environment_data.dart';
 import 'package:ultra_run_calc/features/pace/pace_table_data.dart';
 
 void main() {
@@ -13,6 +14,14 @@ void main() {
     water: ['', '500 мл', ''],
     food: ['', 'гель', ''],
     boldColumns: [1],
+    environment: EnvironmentSettings(
+      surfaceEnabled: true,
+      weatherEnabled: true,
+      shoesEnabled: true,
+      groomedSnow: true,
+      startUtc: DateTime.utc(2026, 7, 24, 19, 3),
+      shoe: ShoeKind.trail,
+    ),
   );
 
   test('survives a JSON round trip', () {
@@ -26,6 +35,20 @@ void main() {
     expect(restored.notes, ['Start', '', 'Finish']);
     expect(restored.boldColumns, [1]);
     expect(restored.seeded, isFalse);
+    expect(restored.environment.surfaceEnabled, isTrue);
+    expect(restored.environment.weatherEnabled, isTrue);
+    expect(restored.environment.shoesEnabled, isTrue);
+    expect(restored.environment.groomedSnow, isTrue);
+    expect(restored.environment.shoe, ShoeKind.trail);
+    expect(restored.environment.startUtc, DateTime.utc(2026, 7, 24, 19, 3));
+  });
+
+  test('old table without environment loads with everything off', () {
+    final restored = PaceTableData.tryFromJson({'columns': 3});
+
+    expect(restored!.environment.anyEnabled, isFalse);
+    expect(restored.environment.startUtc, isNull);
+    expect(restored.environment.shoe, isNull);
   });
 
   test('lists are immutable after construction', () {

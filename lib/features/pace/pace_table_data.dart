@@ -1,3 +1,4 @@
+import 'environment_data.dart';
 import 'mountain_data.dart';
 
 /// Источник, из которого посчитаны итоговые плановые показатели.
@@ -28,6 +29,7 @@ class PaceTableData {
     this.seeded = false,
     List<int> boldColumns = const <int>[],
     this.mountain = MountainData.empty,
+    this.environment = EnvironmentSettings.empty,
   }) : times = List<String>.unmodifiable(times),
        distances = List<String>.unmodifiable(distances),
        planTimes = List<String>.unmodifiable(planTimes),
@@ -78,6 +80,7 @@ class PaceTableData {
       seeded: data['seeded'] is bool ? data['seeded'] as bool : false,
       boldColumns: boldColumns,
       mountain: MountainData.tryFromJson(data['mountain'], columns: columns),
+      environment: EnvironmentSettings.tryFromJson(data['environment']),
     );
   }
 
@@ -103,6 +106,9 @@ class PaceTableData {
   /// Горный режим: стоянки, опора плана, треки и ручные высоты.
   final MountainData mountain;
 
+  /// Покрытие, погода и кроссовки. Вычисленные данные не хранятся.
+  final EnvironmentSettings environment;
+
   Map<String, dynamic> toJson() {
     return {
       'columns': columns,
@@ -122,6 +128,7 @@ class PaceTableData {
       'seeded': seeded,
       'boldColumns': boldColumns,
       'mountain': mountain.toJson(),
+      'environment': environment.toJson(),
     };
   }
 

@@ -27,6 +27,34 @@ void main() {
       expect(track.hasElevation, isFalse);
     });
 
+    test('сохраняет время точек в epoch seconds UTC', () {
+      const source = '''
+<?xml version="1.0"?>
+<gpx version="1.1" creator="test">
+  <trk><trkseg>
+    <trkpt lat="56.0" lon="38.0">
+      <ele>100</ele><time>2026-07-24T19:03:33Z</time>
+    </trkpt>
+    <trkpt lat="56.0001" lon="38.0">
+      <ele>101</ele><time>2026-07-24T19:04:03Z</time>
+    </trkpt>
+  </trkseg></trk>
+</gpx>
+''';
+      final track = parseGpx(source);
+      expect(track.hasTime, isTrue);
+      final expected =
+          DateTime.utc(2026, 7, 24, 19, 3, 33).millisecondsSinceEpoch / 1000.0;
+      expect(track.timesSec[0], closeTo(expected, 0.001));
+      expect(track.timesSec[1] - track.timesSec[0], closeTo(30, 0.001));
+    });
+
+    test('без time hasTime = false, значения NaN', () {
+      final track = parseGpx(File('test/fixtures/hill.gpx').readAsStringSync());
+      expect(track.hasTime, isFalse);
+      expect(track.timesSec.every((t) => t.isNaN), isTrue);
+    });
+
     test('не GPX — ошибка', () {
       expect(
         () => parseGpx('<html></html>'),

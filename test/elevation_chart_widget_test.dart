@@ -3,9 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ultra_run_calc/core/app_strings.dart';
 import 'package:ultra_run_calc/features/gpx/elevation_profile.dart';
 import 'package:ultra_run_calc/features/pace/elevation_chart_view.dart';
+import 'package:ultra_run_calc/features/pace/environment_data.dart';
 
 /// Профиль 0–20 км: подъём, плато, спуск.
-ElevationChartData _data() {
+ElevationChartData _data({EnvironmentData? environment}) {
   final profile = <ProfilePoint>[
     for (var i = 0; i <= 40; i++)
       ProfilePoint(km: i * 0.5, eleM: 100 + i * 10.0, gradeFraction: 0.05),
@@ -20,6 +21,94 @@ ElevationChartData _data() {
     totalAscentM: 400,
     totalDescentM: 0,
     boundariesKm: const [0, 10, 20],
+    environment: environment,
+  );
+}
+
+EnvironmentData _environment() {
+  return EnvironmentData(
+    settings: const EnvironmentSettings(
+      surfaceEnabled: true,
+      weatherEnabled: true,
+    ),
+    weather: [
+      WeatherSample(
+        distanceM: 0,
+        timeUtc: DateTime.utc(2026, 7, 24, 4),
+        lat: 56,
+        lon: 40,
+        elevationM: 100,
+        tempC: 18,
+        apparentC: 17,
+        humidityPct: 70,
+        precipMm: 0,
+        rainMm: 0,
+        et0Mm: 0,
+        windKmh: 5,
+        snowfallCm: 0,
+        snowDepthM: 0,
+        soilMoistureTop: 0.3,
+        soilMoistureDeep: 0.3,
+        soilMoistureEff: 0.3,
+        freezingLevelM: 3000,
+        mode: WeatherMode.historical,
+      ),
+      WeatherSample(
+        distanceM: 10000,
+        timeUtc: DateTime.utc(2026, 7, 24, 5),
+        lat: 56.1,
+        lon: 40,
+        elevationM: 200,
+        tempC: 26,
+        apparentC: 29,
+        humidityPct: 70,
+        precipMm: 0,
+        rainMm: 0,
+        et0Mm: 0,
+        windKmh: 5,
+        snowfallCm: 0,
+        snowDepthM: 0,
+        soilMoistureTop: 0.45,
+        soilMoistureDeep: 0.45,
+        soilMoistureEff: 0.45,
+        freezingLevelM: 3000,
+        mode: WeatherMode.historical,
+      ),
+    ],
+    surface: const [
+      SurfaceRun(
+        startM: 0,
+        endM: 5000,
+        type: SurfaceType.asphalt,
+        wetness: Wetness.dry,
+        confidence: 1,
+        factor: 1.0,
+      ),
+      SurfaceRun(
+        startM: 5000,
+        endM: 15000,
+        type: SurfaceType.dirt,
+        wetness: Wetness.saturated,
+        confidence: 1,
+        factor: 1.5,
+      ),
+      SurfaceRun(
+        startM: 15000,
+        endM: 20000,
+        type: SurfaceType.mud,
+        wetness: Wetness.bog,
+        confidence: 1,
+        isBog: true,
+        bogKind: 'bog',
+        factor: 1.8,
+      ),
+    ],
+    fords: const [
+      Ford(distanceM: 7000, confirmed: true),
+      Ford(distanceM: 12000, confirmed: false),
+    ],
+    surfaceCoverage: 0.5,
+    hasForecast: true,
   );
 }
 
@@ -237,6 +326,39 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('elevation-chart-reset')), findsNothing);
+    });
+  });
+
+  group('слои окружения', () {
+    testWidgets('карта с покрытием, бродами и погодой рисуется без ошибок', (
+      tester,
+    ) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      expect(find.text(AppStrings.elevationChartTitle), findsOneWidget);
+      expect(find.byType(CustomPaint), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    test('цвета покрытия, мокрости и погоды заданы для всех значений', () {
+      for (final type in SurfaceType.values) {
+        expect(surfaceOverlayColor(type), isA<Color>());
+      }
+      for (final wetness in Wetness.values) {
+        expect(wetnessOverlayColor(wetness), isA<Color>());
+      }
+      for (final temp in [-20.0, -8.0, 0.0, 10.0, 20.0, 30.0, 40.0]) {
+        expect(apparentTemperatureColor(temp), isA<Color>());
+      }
+      // Холод и жара различаются заметно.
+      expect(
+        apparentTemperatureColor(-15),
+        isNot(apparentTemperatureColor(35)),
+      );
     });
   });
 }

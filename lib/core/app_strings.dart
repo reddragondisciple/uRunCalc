@@ -145,6 +145,43 @@ class AppStrings {
   static const String paceSettingsMountain = 'Горный режим';
   static const String paceSettingsImportGpx = 'Загрузить трек GPX';
   static const String paceSettingsTrackSlot = 'Основной / резервный трек';
+  static const String paceSettingsSurface = 'Покрытие';
+  static const String paceSettingsWeather = 'Погода';
+  static const String paceSettingsShoes = 'Кроссовки';
+
+  // Окружение: покрытие, погода, кроссовки.
+  static const String environmentSurfaceTitle = 'Покрытие';
+  static const String environmentSurfaceHint =
+      'Тип покрытия, влажность, болота и броды определяются автоматически '
+      'по треку: OSM, растрам и погодным API.';
+  static const String environmentWeatherTitle = 'Погода';
+  static const String environmentWeatherHint =
+      'Погода берётся по координатам и времени старта. Для истории — архив, '
+      'для будущих дат — прогноз или климатические нормы.';
+  static const String environmentShoesTitle = 'Кроссовки';
+  static const String environmentShoesHint =
+      'Множитель обуви применяется ко всем участкам относительно трейловых '
+      'кроссовок на природном покрытии.';
+  static const String environmentStartDate = 'Дата старта';
+  static const String environmentStartTime = 'Время старта';
+  static const String environmentGroomedSnow = 'Укатанный снег';
+  static const String environmentGroomedSnowHint =
+      'Трассу укатали или натоптали: эффективная глубина снега меньше.';
+  static const String environmentNoForecast = 'Нет прогноза';
+  static const String environmentNoForecastHint =
+      'Для этой даты прогноза нет: будут климатические нормы, погодная '
+      'полоса на графике не рисуется.';
+  static const String environmentDisable = 'Отключить';
+  static const String environmentNoTrack =
+      'Сначала загрузите трек GPX в горном режиме';
+  static const String environmentLoading =
+      'Считаем покрытие и погоду по треку…';
+  static String environmentCoverage(int percent) => 'Покрытие OSM: $percent%';
+  static String environmentWeatherRange(String temp, String apparent) =>
+      'Погода: $temp °C, ощущается $apparent °C';
+  static const String shoeRoad = 'Дорожные';
+  static const String shoeTrail = 'Трейловые';
+  static const String shoeMinimal = 'Минималистичные';
 
   static const String elevationChartTitle = 'Карта высот';
   static const String elevationChartNoData = 'Нет данных о высоте';

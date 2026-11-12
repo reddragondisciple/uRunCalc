@@ -26,6 +26,9 @@ import '../gpx/track_parse_async.dart';
 import '../gpx/track_store.dart';
 import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
+import 'environment_data.dart';
+import 'environment_service.dart';
+import 'factor_profile.dart';
 import 'mountain_data.dart';
 import 'pace_calculations.dart';
 import 'pace_normatives.dart';
@@ -38,6 +41,7 @@ import 'pace_settings_menu.dart';
 import 'pace_state_codec.dart';
 import 'pace_state_controller.dart';
 import 'pace_table_data.dart';
+import 'weather_provider.dart';
 
 part 'pace_calculator_part.dart';
 part 'pace_events_part.dart';
@@ -240,6 +244,24 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   /// Горный режим текущей таблицы. Хранится в [MountainData] снимка таблицы.
   bool _mountainEnabled = false;
 
+  /// Покрытие, погода и кроссовки текущей таблицы. Хранится в
+  /// [EnvironmentSettings] снимка таблицы; вычисленные данные — в памяти.
+  EnvironmentSettings _environment = EnvironmentSettings.empty;
+
+  /// Вычисленное окружение текущего трека. Не сохраняется.
+  EnvironmentData? _environmentData;
+  bool _environmentLoading = false;
+
+  /// Номер запроса окружения: старый ответ не должен перезаписать новый.
+  int _environmentRequest = 0;
+
+  /// Сервис живёт вместе с экраном: OSM кэшируется на трек, поэтому
+  /// итерации погоды не дёргают Overpass повторно.
+  final EnvironmentService _environmentService = EnvironmentService();
+
+  /// Глобальный профиль коэффициентов, читается один раз.
+  FactorProfile? _factorProfile;
+
   /// Глобальный переключатель: показывать темп сегмента с учётом стоянок.
   bool _showStopsInPace = false;
 
@@ -293,6 +315,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
 
   List<PlanSegment>? _cachedPlanSegments;
   ParsedTrack? _cachedPlanTrack;
+  EnvironmentData? _cachedPlanEnvironment;
   List<String> _cachedPlanDistances = const [];
   int _cachedPlanColumns = -1;
 
@@ -571,6 +594,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildTableToolbar(),
+                  _buildEnvironmentStatus(),
                   const SizedBox(height: 8),
                   _buildTable(compact: false),
                 ],

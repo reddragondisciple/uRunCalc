@@ -84,6 +84,28 @@ class PaceSettingsMenu {
               ),
             ),
             const Divider(),
+            _environmentOption(
+              dialogContext,
+              key: const ValueKey('pace-settings-surface'),
+              label: AppStrings.paceSettingsSurface,
+              checked: state.surfaceEnabled,
+              choice: PaceSettingsChoice.surface,
+            ),
+            _environmentOption(
+              dialogContext,
+              key: const ValueKey('pace-settings-weather'),
+              label: AppStrings.paceSettingsWeather,
+              checked: state.weatherEnabled,
+              choice: PaceSettingsChoice.weather,
+            ),
+            _environmentOption(
+              dialogContext,
+              key: const ValueKey('pace-settings-shoes'),
+              label: AppStrings.paceSettingsShoes,
+              checked: state.shoesEnabled,
+              choice: PaceSettingsChoice.shoes,
+            ),
+            const Divider(),
             SimpleDialogOption(
               key: const ValueKey('pace-settings-export-tcx'),
               onPressed: null,
@@ -109,7 +131,35 @@ class PaceSettingsMenu {
         await actions.onImportGpx();
       case PaceSettingsChoice.trackSlot:
         await actions.onTrackSlot();
+      case PaceSettingsChoice.surface:
+        await actions.onSurface();
+      case PaceSettingsChoice.weather:
+        await actions.onWeather();
+      case PaceSettingsChoice.shoes:
+        await actions.onShoes();
     }
+  }
+
+  /// Пункт с чекбоксом. Нажатие всегда открывает диалог: галочка появляется
+  /// только после «Применить», поэтому здесь нет переключения флага.
+  static Widget _environmentOption(
+    BuildContext dialogContext, {
+    required Key key,
+    required String label,
+    required bool checked,
+    required PaceSettingsChoice choice,
+  }) {
+    return SimpleDialogOption(
+      key: key,
+      onPressed: () => Navigator.pop(dialogContext, choice),
+      child: Row(
+        children: [
+          Icon(checked ? Icons.check_box : Icons.check_box_outline_blank),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label)),
+        ],
+      ),
+    );
   }
 }
 
@@ -119,6 +169,9 @@ enum PaceSettingsChoice {
   mountainOff,
   importGpx,
   trackSlot,
+  surface,
+  weather,
+  shoes,
 }
 
 /// Состояние, которое меню показывает.
@@ -127,11 +180,17 @@ class PaceSettingsState {
     required this.mountainMode,
     required this.showStopsInPace,
     required this.activeSlotLabel,
+    this.surfaceEnabled = false,
+    this.weatherEnabled = false,
+    this.shoesEnabled = false,
   });
 
   final bool mountainMode;
   final bool showStopsInPace;
   final String activeSlotLabel;
+  final bool surfaceEnabled;
+  final bool weatherEnabled;
+  final bool shoesEnabled;
 }
 
 /// Действия меню. Все асинхронные — экран ждёт завершения диалогов.
@@ -142,6 +201,9 @@ class PaceSettingsActions {
     required this.onImportGpx,
     required this.onTrackSlot,
     required this.onStopsModeChanged,
+    required this.onSurface,
+    required this.onWeather,
+    required this.onShoes,
   });
 
   final Future<void> Function() onColumns;
@@ -149,4 +211,7 @@ class PaceSettingsActions {
   final Future<void> Function() onImportGpx;
   final Future<void> Function() onTrackSlot;
   final void Function(bool enabled) onStopsModeChanged;
+  final Future<void> Function() onSurface;
+  final Future<void> Function() onWeather;
+  final Future<void> Function() onShoes;
 }
