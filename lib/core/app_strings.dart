@@ -177,6 +177,11 @@ class AppStrings {
   static const String environmentLoading =
       'Считаем покрытие и погоду по треку…';
   static String environmentCoverage(int percent) => 'Покрытие OSM: $percent%';
+
+  static String environmentCoverageWithRaster(
+    int osmPercent,
+    int rasterPercent,
+  ) => 'Покрытие OSM: $osmPercent%, растр: +$rasterPercent%';
   static String environmentWeatherRange(String temp, String apparent) =>
       'Погода: $temp °C, ощущается $apparent °C';
   static const String shoeRoad = 'Дорожные';

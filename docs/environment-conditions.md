@@ -165,7 +165,7 @@ class SurfaceRun {
   final bool isBog;
   final String? bogKind;          // bog/fen/marsh/peat/boardwalk…
   final double bogFactor;         // 1.00, если не болото
-  final String surfaceSource;     // surface/tracktype/highway/landcover/default
+  final String surfaceSource;     // surface/tracktype/highway/landuse/worldcover/default
 }
 
 class Ford {
@@ -180,7 +180,8 @@ class EnvironmentData {
   final List<SettlementRun> settlements;
   final List<SnowEstimate> snow;
   final List<Ford> fords;
-  final double surfaceCoverage;   // 0..1
+  final double surfaceCoverage;   // 0..1, доля точек с путём OSM
+  final double rasterCoverage;    // 0..1, доля точек, уточнённых растром
   final bool hasForecast;         // false → погодную полосу не рисуем
   final String? warning;          // «покрытие OSM 38%», «прогноз недоступен»
 }
@@ -706,6 +707,19 @@ DEM и SoilGrids сами по себе болото не назначают —
 - В интерфейсе показываем, сколько длины покрыто явными тегами и сколько
   добавлено растрами. Это честнее, чем одна цифра «73%».
 
+Реализация на 12.11.2026 — **приоритетный выбор**, а не числовое
+взвешивание (веса сохранены как `confidence` источника и показываются в
+`SurfaceRun.confidence`):
+
+1. явный `surface` → `tracktype` → жёсткая дорога по `highway`;
+2. для «мягкой» тропы растр уточняет покрытие только мягкими классами
+   (`dirt`, `ground`, `grass`, `sand`) — тропа не становится асфальтом;
+3. если дороги OSM нет вообще, растр заполняет пробел любым классом,
+   включая застройку (`pavingStones`);
+4. вода (`WorldCover` 80) не даёт кандидата: ни покрытия, ни брода;
+5. `wetland`/`mangrove` дают болото с уверенностью 0.5; OSM-болото имеет
+   уверенность 1.0 и всегда важнее растрового.
+
 Соответствие классам ESA WorldCover:
 
 | Класс | Покрытие |
@@ -713,17 +727,23 @@ DEM и SoilGrids сами по себе болото не назначают —
 | 10 дерево | `ground` (лесная подстилка) |
 | 20 кустарник | `ground` |
 | 30 трава | `grass` |
-| 40 пашня | `dirt` / `compacted` |
-| 50 застройка | `asphalt` / `paving_stones` |
+| 40 пашня | `dirt` |
+| 50 застройка | `pavingStones` |
 | 60 голая земля | `ground` |
-| 80 вода | брод/вода |
-| 90 водно-болотные травы | `bog` (низкая уверенность) |
-| 95 мангры | `bog` |
+| 70 снег/лёд | `ground` |
+| 80 вода | нет кандидата: вода не назначает ни покрытие, ни брод |
+| 90 водно-болотные травы | `grass` + болото, уверенность 0.5 |
+| 95 мангры | `ground` + болото, уверенность 0.5 |
 | 100 мох/лишайник | `ground` |
 
 Важно: «застройка» не превращает лесную тропу в асфальт. Сначала смотрим
 `highway` и `surface`, растр — только для пробелов. Поэтому вес OSM-тегов
 всегда выше растровых.
+
+Данные: ESA WorldCover 2021 v200, лицензия **CC BY 4.0**
+(`https://esa-worldcover.org`). Тайлы читаются из COG на
+`esa-worldcover.s3.eu-central-1.amazonaws.com` через HTTP Range; полный
+тайл 3°×3° (~67 МБ) не скачивается.
 
 ### 6.7. Почему не берём данные с картинки карты
 

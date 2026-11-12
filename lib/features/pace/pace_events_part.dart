@@ -991,7 +991,14 @@ extension _PaceEventsPart on _PaceViewState {
 
     final parts = <String>[
       if (_environment.surfaceEnabled)
-        AppStrings.environmentCoverage((data.surfaceCoverage * 100).round()),
+        data.rasterCoverage > 0
+            ? AppStrings.environmentCoverageWithRaster(
+                (data.surfaceCoverage * 100).round(),
+                (data.rasterCoverage * 100).round(),
+              )
+            : AppStrings.environmentCoverage(
+                (data.surfaceCoverage * 100).round(),
+              ),
       if (_environment.weatherEnabled && data.weather.isNotEmpty)
         AppStrings.environmentWeatherRange(
           _temperatureRange(data.weather, (s) => s.tempC),

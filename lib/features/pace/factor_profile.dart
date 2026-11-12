@@ -250,6 +250,7 @@ class FactorProfile {
         'peatExtraction': 1.40,
         'boardwalk': 1.05,
         'pathInWetland': 1.25,
+        'worldCoverWetland': 1.20,
         'frozenTop': 1.20,
         'snowCoverM': 0.05,
         'frozenTopTempC': -10,

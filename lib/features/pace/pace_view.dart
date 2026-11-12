@@ -42,6 +42,7 @@ import 'pace_state_codec.dart';
 import 'pace_state_controller.dart';
 import 'pace_table_data.dart';
 import 'weather_provider.dart';
+import 'worldcover_provider.dart';
 
 part 'pace_calculator_part.dart';
 part 'pace_events_part.dart';
@@ -257,7 +258,9 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
 
   /// Сервис живёт вместе с экраном: OSM кэшируется на трек, поэтому
   /// итерации погоды не дёргают Overpass повторно.
-  final EnvironmentService _environmentService = EnvironmentService();
+  final EnvironmentService _environmentService = EnvironmentService(
+    raster: WorldCoverProvider(),
+  );
 
   /// Глобальный профиль коэффициентов, читается один раз.
   FactorProfile? _factorProfile;

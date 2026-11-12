@@ -12,21 +12,32 @@ import 'environment_factors.dart';
 import 'environment_sampling.dart';
 import 'factor_profile.dart';
 import 'osm_provider.dart';
+import 'raster_coverage.dart';
 import 'weather_provider.dart';
 
 /// Считает покрытие, погоду, снег и итоговые множители для трека.
 class EnvironmentService {
-  EnvironmentService({OsmProvider? osm, WeatherProvider? weather})
-    : _osm = osm ?? OverpassOsmProvider(),
-      _weather = weather ?? OpenMeteoProvider();
+  EnvironmentService({
+    OsmProvider? osm,
+    WeatherProvider? weather,
+    RasterCoverageProvider? raster,
+  }) : _osm = osm ?? OverpassOsmProvider(),
+       _weather = weather ?? OpenMeteoProvider(),
+       _raster = raster ?? const NoopRasterCoverageProvider();
 
   final OsmProvider _osm;
   final WeatherProvider _weather;
+  final RasterCoverageProvider _raster;
 
   /// OSM не зависит от времени и погоды: при итерациях погоды и повторном
   /// включении галочек запрашиваем Overpass один раз на трек.
   String? _osmCacheKey;
-  OsmSurfaceResult? _osmCache;
+  OsmData? _osmCache;
+
+  /// Готовые участки покрытия (OSM + растр). Кэшируем только если оба
+  /// источника ответили успешно, иначе следующий расчёт повторит растр.
+  String? _surfaceCacheKey;
+  OsmSurfaceResult? _surfaceCache;
 
   Future<EnvironmentData> compute({
     required ParsedTrack parsed,
@@ -48,30 +59,55 @@ class EnvironmentService {
     final surfacePoints = sampleTrackPoints(parsed);
     var warning = <String>[];
 
-    final cacheKey = _pointsKey(surfacePoints);
-    OsmSurfaceResult osmResult;
-    if (_osmCacheKey == cacheKey && _osmCache != null) {
-      osmResult = _osmCache!;
+    final pointsKey = _pointsKey(surfacePoints);
+    final needsRaster = settings.surfaceEnabled || settings.shoesEnabled;
+    final surfaceKey = '$pointsKey|raster:${needsRaster ? 1 : 0}';
+    OsmSurfaceResult surfaceResult;
+    if (_surfaceCacheKey == surfaceKey && _surfaceCache != null) {
+      surfaceResult = _surfaceCache!;
     } else {
       OsmData osmData;
-      var cacheable = true;
-      try {
-        osmData = await _osm.fetch(points: surfacePoints);
-      } catch (error) {
-        osmData = const OsmData();
-        warning.add('OSM недоступен: покрытие считается грунтом');
-        // Сетевую ошибку не кэшируем: следующий пересчёт попробует снова.
-        cacheable = false;
+      var osmOk = true;
+      if (_osmCacheKey == pointsKey && _osmCache != null) {
+        osmData = _osmCache!;
+      } else {
+        try {
+          osmData = await _osm.fetch(points: surfacePoints);
+          _osmCacheKey = pointsKey;
+          _osmCache = osmData;
+        } catch (error) {
+          osmData = const OsmData();
+          warning.add('OSM недоступен: покрытие считается грунтом');
+          // Сетевую ошибку не кэшируем: следующий пересчёт попробует снова.
+          osmOk = false;
+        }
       }
 
-      osmResult = buildOsmSurfaceResult(
+      var rasterSamples = const <RasterCandidate?>[];
+      var rasterOk = true;
+      if (needsRaster) {
+        try {
+          final rasterResult = await _raster.sample(points: surfacePoints);
+          rasterSamples = rasterResult.candidates;
+          if (rasterResult.warning != null) {
+            warning.add(rasterResult.warning!);
+            rasterOk = false;
+          }
+        } catch (error) {
+          warning.add('Растр покрытия недоступен: уточнение только по OSM');
+          rasterOk = false;
+        }
+      }
+
+      surfaceResult = buildOsmSurfaceResult(
         points: surfacePoints,
         data: osmData,
         profile: profile,
+        rasterSamples: rasterSamples,
       );
-      if (cacheable) {
-        _osmCacheKey = cacheKey;
-        _osmCache = osmResult;
+      if (osmOk && rasterOk) {
+        _surfaceCacheKey = surfaceKey;
+        _surfaceCache = surfaceResult;
       }
     }
 
@@ -84,8 +120,8 @@ class EnvironmentService {
       } else {
         final points = selectWeatherPoints(
           parsed,
-          surfaceRuns: osmResult.runs,
-          fords: osmResult.fords,
+          surfaceRuns: surfaceResult.runs,
+          fords: surfaceResult.fords,
         );
         final pace = flatPaceSecPerKm > 0 ? flatPaceSecPerKm : 360.0;
         final queries = [
@@ -118,7 +154,7 @@ class EnvironmentService {
 
     final runs = <SurfaceRun>[];
     final snowEstimates = <SnowEstimate>[];
-    for (final run in osmResult.runs) {
+    for (final run in surfaceResult.runs) {
       final weather = _nearestWeather(
         weatherSamples,
         (run.startM + run.endM) / 2,
@@ -131,7 +167,7 @@ class EnvironmentService {
         wetness: wetness,
         tempC: weather?.tempC ?? 0,
       );
-      final bog = run.isBog
+      final bogBase = run.isBog
           ? bogFactor(
               kind: run.bogKind ?? 'bog',
               snowDepthM: weather?.snowDepthM ?? 0,
@@ -141,6 +177,9 @@ class EnvironmentService {
               groomed: settings.groomedSnow,
             )
           : 1.0;
+      // Растровый wetland — низкая уверенность: тянем множитель к 1.00.
+      final bogConfidence = run.bogConfidence.clamp(0.0, 1.0).toDouble();
+      final bog = run.isBog ? 1 + (bogBase - 1) * bogConfidence : 1.0;
 
       final heat = weather == null
           ? 1.0
@@ -192,6 +231,7 @@ class EnvironmentService {
           isBog: run.isBog,
           bogKind: run.bogKind,
           bogFactor: bog,
+          bogConfidence: run.bogConfidence,
           surfaceSource: run.surfaceSource,
           urbanity: run.urbanity,
           roadClass: run.roadClass,
@@ -223,10 +263,11 @@ class EnvironmentService {
       settings: settings,
       weather: weatherSamples,
       surface: runs,
-      settlements: osmResult.settlements,
+      settlements: surfaceResult.settlements,
       snow: snowEstimates,
-      fords: osmResult.fords,
-      surfaceCoverage: osmResult.coverage,
+      fords: surfaceResult.fords,
+      surfaceCoverage: surfaceResult.coverage,
+      rasterCoverage: surfaceResult.rasterCoverage,
       hasForecast: hasWeatherBand,
       warning: warning.isEmpty ? null : warning.join('; '),
     );

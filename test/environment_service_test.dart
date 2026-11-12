@@ -9,6 +9,7 @@ import 'package:ultra_run_calc/features/pace/environment_sampling.dart';
 import 'package:ultra_run_calc/features/pace/environment_service.dart';
 import 'package:ultra_run_calc/features/pace/factor_profile.dart';
 import 'package:ultra_run_calc/features/pace/osm_provider.dart';
+import 'package:ultra_run_calc/features/pace/raster_coverage.dart';
 import 'package:ultra_run_calc/features/pace/weather_provider.dart';
 
 ParsedTrack _track({int points = 10}) {
@@ -122,6 +123,57 @@ class _CountingOsm implements OsmProvider {
         ),
       ],
     );
+  }
+}
+
+/// Путь без `surface`: растр может его уточнить.
+class _BarePathOsm implements OsmProvider {
+  const _BarePathOsm();
+
+  @override
+  Future<OsmData> fetch({required List<TrackSamplePoint> points}) async {
+    return OsmData(
+      features: [
+        OsmFeature(
+          id: 1,
+          tags: const {'highway': 'path'},
+          geometry: [
+            for (final point in points) OsmPoint(point.lat, point.lon),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FakeRaster implements RasterCoverageProvider {
+  _FakeRaster(this.candidate, {this.warning});
+
+  final RasterCandidate? candidate;
+  final String? warning;
+  int calls = 0;
+
+  @override
+  Future<RasterCoverageResult> sample({
+    required List<TrackSamplePoint> points,
+  }) async {
+    calls++;
+    return RasterCoverageResult(
+      candidates: List<RasterCandidate?>.filled(points.length, candidate),
+      warning: warning,
+    );
+  }
+}
+
+class _FailingRaster implements RasterCoverageProvider {
+  int calls = 0;
+
+  @override
+  Future<RasterCoverageResult> sample({
+    required List<TrackSamplePoint> points,
+  }) async {
+    calls++;
+    throw const RasterCoverageException('нет сети');
   }
 }
 
@@ -384,5 +436,167 @@ void main() {
     );
 
     expect(osm.calls, 1);
+  });
+
+  test('raster refines a bare path and propagates raster coverage', () async {
+    final raster = _FakeRaster(
+      const RasterCandidate(
+        type: SurfaceType.ground,
+        weight: 0.40,
+        source: 'worldcover',
+      ),
+    );
+
+    final data =
+        await EnvironmentService(
+          osm: const _BarePathOsm(),
+          weather: const _FakeWeather(),
+          raster: raster,
+        ).compute(
+          parsed: _track(),
+          settings: const EnvironmentSettings(surfaceEnabled: true),
+          profile: profile,
+          flatPaceSecPerKm: 360,
+        );
+
+    expect(raster.calls, 1);
+    expect(data.surface.every((run) => run.type == SurfaceType.ground), isTrue);
+    expect(data.surface.first.factor, closeTo(1.12, 0.001));
+    expect(data.surfaceCoverage, closeTo(1.0, 0.001));
+    expect(data.rasterCoverage, closeTo(1.0, 0.001));
+  });
+
+  test('raster wetland factor is scaled by confidence', () async {
+    final raster = _FakeRaster(
+      const RasterCandidate(
+        type: SurfaceType.grass,
+        weight: 0.40,
+        source: 'worldcover',
+        bogKind: 'worldCoverWetland',
+        bogConfidence: 0.5,
+      ),
+    );
+
+    final data =
+        await EnvironmentService(
+          osm: const _BarePathOsm(),
+          weather: const _FakeWeather(),
+          raster: raster,
+        ).compute(
+          parsed: _track(),
+          settings: const EnvironmentSettings(surfaceEnabled: true),
+          profile: profile,
+          flatPaceSecPerKm: 360,
+        );
+
+    final run = data.surface.first;
+    expect(run.isBog, isTrue);
+    expect(run.bogConfidence, closeTo(0.5, 0.001));
+    // 1.20 при уверенности 0.5 тянется к 1.00: получаем 1.10.
+    expect(run.bogFactor, closeTo(1.10, 0.001));
+    // grass 1.15 × bog 1.10.
+    expect(run.factor, closeTo(1.265, 0.001));
+  });
+
+  test('raster failure keeps OSM surface and warns', () async {
+    final raster = _FailingRaster();
+
+    final data =
+        await EnvironmentService(
+          osm: const _BarePathOsm(),
+          weather: const _FakeWeather(),
+          raster: raster,
+        ).compute(
+          parsed: _track(),
+          settings: const EnvironmentSettings(surfaceEnabled: true),
+          profile: profile,
+          flatPaceSecPerKm: 360,
+        );
+
+    expect(data.surface.first.type, SurfaceType.dirt);
+    expect(data.surface.first.factor, closeTo(1.10, 0.001));
+    expect(data.rasterCoverage, 0);
+    expect(data.warning, contains('Растр'));
+  });
+
+  test('raster is not requested when only weather is enabled', () async {
+    final raster = _FakeRaster(
+      const RasterCandidate(
+        type: SurfaceType.ground,
+        weight: 0.40,
+        source: 'worldcover',
+      ),
+    );
+
+    await EnvironmentService(
+      osm: const _TrackOsm(),
+      weather: _FakeWeather(samples: [_sample()]),
+      raster: raster,
+    ).compute(
+      parsed: _track(),
+      settings: EnvironmentSettings(
+        weatherEnabled: true,
+        startUtc: DateTime.utc(2026, 7, 24, 4, 7),
+      ),
+      profile: profile,
+      flatPaceSecPerKm: 360,
+    );
+
+    expect(raster.calls, 0);
+  });
+
+  test('raster result is cached together with OSM', () async {
+    final raster = _FakeRaster(
+      const RasterCandidate(
+        type: SurfaceType.ground,
+        weight: 0.40,
+        source: 'worldcover',
+      ),
+    );
+    final service = EnvironmentService(
+      osm: const _BarePathOsm(),
+      weather: const _FakeWeather(),
+      raster: raster,
+    );
+    final parsed = _track();
+
+    for (var i = 0; i < 2; i++) {
+      await service.compute(
+        parsed: parsed,
+        settings: const EnvironmentSettings(surfaceEnabled: true),
+        profile: profile,
+        flatPaceSecPerKm: 360,
+      );
+    }
+
+    expect(raster.calls, 1);
+  });
+
+  test('a raster warning is not cached and the next call retries', () async {
+    final raster = _FakeRaster(
+      const RasterCandidate(
+        type: SurfaceType.ground,
+        weight: 0.40,
+        source: 'worldcover',
+      ),
+      warning: 'WorldCover недоступен',
+    );
+    final service = EnvironmentService(
+      osm: const _BarePathOsm(),
+      weather: const _FakeWeather(),
+      raster: raster,
+    );
+    final parsed = _track();
+
+    for (var i = 0; i < 2; i++) {
+      await service.compute(
+        parsed: parsed,
+        settings: const EnvironmentSettings(surfaceEnabled: true),
+        profile: profile,
+        flatPaceSecPerKm: 360,
+      );
+    }
+
+    expect(raster.calls, 2);
   });
 }

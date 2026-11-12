@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'environment_data.dart';
 import 'environment_sampling.dart';
 import 'factor_profile.dart';
+import 'raster_coverage.dart';
 
 /// Точка геометрии OSM.
 class OsmPoint {
@@ -224,6 +225,7 @@ class OsmSurfaceResult {
     required this.settlements,
     required this.fords,
     required this.coverage,
+    this.rasterCoverage = 0,
   });
 
   final List<SurfaceRun> runs;
@@ -232,6 +234,9 @@ class OsmSurfaceResult {
 
   /// Доля точек, для которых нашёлся путь OSM.
   final double coverage;
+
+  /// Доля точек, где тип покрытия уточнён растром.
+  final double rasterCoverage;
 }
 
 /// Строит участки покрытия, населённые пункты и броды по точкам трека.
@@ -239,6 +244,7 @@ OsmSurfaceResult buildOsmSurfaceResult({
   required List<TrackSamplePoint> points,
   required OsmData data,
   required FactorProfile profile,
+  List<RasterCandidate?> rasterSamples = const [],
 }) {
   if (points.isEmpty) {
     return const OsmSurfaceResult(
@@ -253,8 +259,14 @@ OsmSurfaceResult buildOsmSurfaceResult({
     for (final feature in data.features) _IndexedFeature(feature),
   ];
   final info = [
-    for (final point in points)
-      _classifyPoint(point, indexed, data.places, profile),
+    for (var i = 0; i < points.length; i++)
+      _classifyPoint(
+        points[i],
+        indexed,
+        data.places,
+        profile,
+        i < rasterSamples.length ? rasterSamples[i] : null,
+      ),
   ];
   final runs = <SurfaceRun>[];
   final settlements = <SettlementRun>[];
@@ -282,6 +294,7 @@ OsmSurfaceResult buildOsmSurfaceResult({
           isBog: first.bogKind != null,
           bogKind: first.bogKind,
           bogFactor: first.bogFactor,
+          bogConfidence: first.bogConfidence,
           surfaceSource: first.source,
           urbanity: first.urbanity,
           roadClass: first.roadClass,
@@ -313,11 +326,13 @@ OsmSurfaceResult buildOsmSurfaceResult({
   }
 
   final coverage = info.where((i) => i.hasRoad).length / info.length;
+  final rasterCoverage = info.where((i) => i.fromRaster).length / info.length;
   return OsmSurfaceResult(
     runs: runs,
     settlements: settlements,
     fords: fords,
     coverage: coverage,
+    rasterCoverage: rasterCoverage,
   );
 }
 
@@ -382,7 +397,9 @@ class _PointInfo {
     required this.hasRoad,
     required this.ford,
     required this.fordConfirmed,
+    this.fromRaster = false,
     this.bogKind,
+    this.bogConfidence = 1.0,
   }) : bogFactor = 1.0;
 
   final double distanceM;
@@ -396,11 +413,15 @@ class _PointInfo {
   final bool hasRoad;
   final bool ford;
   final bool fordConfirmed;
+  final bool fromRaster;
   final String? bogKind;
+  final double bogConfidence;
   double bogFactor;
 
   String get groupKey =>
-      '${type.name}|${bogKind ?? ''}|$ford|${roadClass.name}|${context.name}';
+      '${type.name}|$source|${bogKind ?? ''}|'
+      '${bogConfidence.toStringAsFixed(2)}|$ford|'
+      '${roadClass.name}|${context.name}';
 }
 
 _PointInfo _classifyPoint(
@@ -408,24 +429,37 @@ _PointInfo _classifyPoint(
   List<_IndexedFeature> features,
   List<OsmPlace> places,
   FactorProfile profile,
+  RasterCandidate? raster,
 ) {
   final road = _nearestRoad(point, features);
   final tags = road?.feature.tags ?? const <String, String>{};
   final areaTags = _areaTags(point, features);
-  final type = _surfaceType(tags, areaTags: areaTags);
-  final source = _surfaceSource(tags, areaTags: areaTags);
-  final confidence = _surfaceConfidence(tags, areaTags: areaTags);
+  final choice = _surfaceChoice(tags, areaTags: areaTags, raster: raster);
   final roadClass = _roadClass(tags['highway']);
   final urbanity = _urbanity(point, features, places, profile);
   final context = _contextFor(urbanity);
-  final bogKind = _bogKind(point, features, road, tags);
+  final osmBogKind = _bogKind(point, features, road, tags);
+
+  // Растровый wetland — только fallback: явный surface/tracktype и OSM-болото
+  // всегда важнее. Для жёсткой дороги растр болото не назначает.
+  final rasterBog =
+      osmBogKind == null &&
+          choice.source != 'surface' &&
+          choice.source != 'tracktype' &&
+          choice.source != 'highway'
+      ? choice.bogKind
+      : null;
+  final bogKind = osmBogKind ?? rasterBog;
+  final bogConfidence = osmBogKind != null
+      ? 1.0
+      : (rasterBog != null ? choice.bogConfidence : 0.0);
   final ford = _ford(point, features, tags);
 
   final info = _PointInfo(
     distanceM: point.distanceM,
-    type: type,
-    source: source,
-    confidence: confidence,
+    type: choice.type,
+    source: choice.source,
+    confidence: choice.confidence,
     urbanity: urbanity,
     context: context,
     settlementConfidence: _settlementConfidence(point, features, places),
@@ -433,12 +467,32 @@ _PointInfo _classifyPoint(
     hasRoad: road != null,
     ford: ford != null,
     fordConfirmed: ford?.confirmed ?? false,
+    fromRaster: choice.fromRaster,
     bogKind: bogKind,
+    bogConfidence: bogConfidence,
   );
   if (bogKind != null) {
     info.bogFactor = profile.bog[bogKind] ?? 1.0;
   }
   return info;
+}
+
+class _SurfaceChoice {
+  const _SurfaceChoice({
+    required this.type,
+    required this.source,
+    required this.confidence,
+    this.fromRaster = false,
+    this.bogKind,
+    this.bogConfidence = 0,
+  });
+
+  final SurfaceType type;
+  final String source;
+  final double confidence;
+  final bool fromRaster;
+  final String? bogKind;
+  final double bogConfidence;
 }
 
 class _RoadMatch {
@@ -660,51 +714,137 @@ RoadClass _roadClass(String? highway) {
   };
 }
 
-SurfaceType _surfaceType(
+/// Выбирает покрытие по приоритетам §6.6.
+///
+/// Явный `surface` и `tracktype` всегда важнее растра. Растр уточняет
+/// «мягкий» путь (лесная подстилка вместо абстрактного грунта) и заполняет
+/// полные пробелы OSM, но не превращает тропу в асфальт.
+_SurfaceChoice _surfaceChoice(
   Map<String, String> tags, {
   Map<String, String> areaTags = const {},
+  RasterCandidate? raster,
 }) {
-  final surface = tags['surface'];
-  final explicit = switch (surface) {
-    'asphalt' => SurfaceType.asphalt,
-    'concrete' || 'concrete:plates' || 'concrete:lanes' => SurfaceType.concrete,
-    'paving_stones' || 'paving_stones:30' => SurfaceType.pavingStones,
-    'compacted' || 'fine_gravel' => SurfaceType.compacted,
-    'dirt' || 'earth' || 'unpaved' => SurfaceType.dirt,
-    'ground' => SurfaceType.ground,
-    'grass' => SurfaceType.grass,
-    'sand' => SurfaceType.sand,
-    'mud' => SurfaceType.mud,
-    'wood' => SurfaceType.ground,
-    _ => null,
-  };
-  if (explicit != null) return explicit;
-
-  final tracktype = tags['tracktype'];
-  if (tracktype == 'grade1') return SurfaceType.compacted;
-  if (tracktype == 'grade2' || tracktype == 'grade3') return SurfaceType.dirt;
-  if (tracktype == 'grade4' || tracktype == 'grade5') {
-    return SurfaceType.ground;
+  final explicit = _explicitSurface(tags['surface']);
+  if (explicit != null) {
+    return _SurfaceChoice(type: explicit, source: 'surface', confidence: 1.0);
   }
 
-  // Растр/полигон уточняет только «мягкие» пути: асфальтовая дорога через
-  // лес остаётся асфальтом, а тропа в лесу — лесной подстилкой.
-  final refined = _areaSurface(areaTags);
-  if (refined != null && _isSoftPath(tags['highway'])) return refined;
+  final tracktype = _tracktypeSurface(tags['tracktype']);
+  if (tracktype != null) {
+    return _SurfaceChoice(
+      type: tracktype,
+      source: 'tracktype',
+      confidence: 0.8,
+    );
+  }
 
-  return switch (tags['highway']) {
-    'footway' || 'pedestrian' || 'cycleway' => SurfaceType.pavingStones,
-    'track' || 'path' => SurfaceType.dirt,
-    'service' || 'residential' => SurfaceType.compacted,
-    'primary' ||
-    'secondary' ||
-    'tertiary' ||
-    'trunk' ||
-    'motorway' => SurfaceType.asphalt,
-    'boardwalk' => SurfaceType.ground,
-    _ => refined ?? SurfaceType.unknown,
-  };
+  final highway = tags['highway'];
+  final area = _areaSurface(areaTags);
+  final rasterType = raster?.type;
+
+  // Пробел OSM: дороги нет, поэтому растр может заполнить его любым
+  // классом, включая застройку. Жёсткие дороги ниже это уже не разрешают.
+  if (highway == null) {
+    if (raster != null) {
+      return _SurfaceChoice(
+        type: raster.type,
+        source: raster.source,
+        confidence: raster.weight,
+        fromRaster: true,
+        bogKind: raster.bogKind,
+        bogConfidence: raster.bogConfidence,
+      );
+    }
+    if (area != null) {
+      return _SurfaceChoice(type: area, source: 'landuse', confidence: 0.5);
+    }
+    return const _SurfaceChoice(
+      type: SurfaceType.unknown,
+      source: 'default',
+      confidence: 0.3,
+    );
+  }
+
+  final soft = _isSoftPath(highway);
+  final rasterSoft = rasterType != null && _isSoftSurface(rasterType);
+
+  if (!soft) {
+    return _SurfaceChoice(
+      type: _hardHighwaySurface(highway),
+      source: 'highway',
+      confidence: 0.6,
+    );
+  }
+
+  if (rasterSoft) {
+    return _SurfaceChoice(
+      type: rasterType,
+      source: raster!.source,
+      confidence: raster.weight,
+      fromRaster: true,
+      bogKind: raster.bogKind,
+      bogConfidence: raster.bogConfidence,
+    );
+  }
+  if (area != null) {
+    return _SurfaceChoice(type: area, source: 'landuse', confidence: 0.5);
+  }
+  return _SurfaceChoice(
+    type: _softHighwaySurface(highway),
+    source: 'highway',
+    confidence: 0.6,
+  );
 }
+
+SurfaceType? _explicitSurface(String? surface) => switch (surface) {
+  'asphalt' => SurfaceType.asphalt,
+  'concrete' || 'concrete:plates' || 'concrete:lanes' => SurfaceType.concrete,
+  'paving_stones' || 'paving_stones:30' => SurfaceType.pavingStones,
+  'compacted' || 'fine_gravel' => SurfaceType.compacted,
+  'dirt' || 'earth' || 'unpaved' => SurfaceType.dirt,
+  'ground' => SurfaceType.ground,
+  'grass' => SurfaceType.grass,
+  'sand' => SurfaceType.sand,
+  'mud' => SurfaceType.mud,
+  'wood' => SurfaceType.ground,
+  _ => null,
+};
+
+SurfaceType? _tracktypeSurface(String? tracktype) => switch (tracktype) {
+  'grade1' => SurfaceType.compacted,
+  'grade2' || 'grade3' => SurfaceType.dirt,
+  'grade4' || 'grade5' => SurfaceType.ground,
+  _ => null,
+};
+
+SurfaceType _softHighwaySurface(String highway) => switch (highway) {
+  'footway' ||
+  'pedestrian' ||
+  'cycleway' ||
+  'steps' => SurfaceType.pavingStones,
+  'boardwalk' => SurfaceType.ground,
+  'path' || 'track' || 'bridleway' => SurfaceType.dirt,
+  _ => SurfaceType.unknown,
+};
+
+SurfaceType _hardHighwaySurface(String highway) => switch (highway) {
+  'service' || 'residential' => SurfaceType.compacted,
+  'primary' ||
+  'secondary' ||
+  'tertiary' ||
+  'trunk' ||
+  'motorway' => SurfaceType.asphalt,
+  _ => SurfaceType.unknown,
+};
+
+/// Растр уточняет мягкий путь только мягкими классами.
+bool _isSoftSurface(SurfaceType type) => switch (type) {
+  SurfaceType.dirt ||
+  SurfaceType.ground ||
+  SurfaceType.grass ||
+  SurfaceType.sand => true,
+  _ => false,
+};
 
 /// Покрытие по полигону `natural`/`landuse` — приоритет 4 из §6.6.
 SurfaceType? _areaSurface(Map<String, String> tags) {
@@ -758,34 +898,6 @@ Map<String, String> _areaTags(
     }
   }
   return const {};
-}
-
-String _surfaceSource(
-  Map<String, String> tags, {
-  Map<String, String> areaTags = const {},
-}) {
-  if (tags['surface'] != null) return 'surface';
-  if (tags['tracktype'] != null) return 'tracktype';
-  if (_areaSurface(areaTags) != null && _isSoftPath(tags['highway'])) {
-    return 'landuse';
-  }
-  if (tags['highway'] != null) return 'highway';
-  if (_areaSurface(areaTags) != null) return 'landuse';
-  return 'default';
-}
-
-double _surfaceConfidence(
-  Map<String, String> tags, {
-  Map<String, String> areaTags = const {},
-}) {
-  if (tags['surface'] != null) return 1.0;
-  if (tags['tracktype'] != null) return 0.8;
-  if (_areaSurface(areaTags) != null && _isSoftPath(tags['highway'])) {
-    return 0.5;
-  }
-  if (tags['highway'] != null) return 0.6;
-  if (_areaSurface(areaTags) != null) return 0.5;
-  return 0.3;
 }
 
 bool _insidePolygon(double lat, double lon, List<OsmPoint> polygon) {

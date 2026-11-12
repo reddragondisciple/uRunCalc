@@ -194,6 +194,7 @@ class SurfaceRun {
     this.isBog = false,
     this.bogKind,
     this.bogFactor = 1.0,
+    this.bogConfidence = 1.0,
     this.surfaceSource = 'default',
     this.urbanity = 0,
     this.roadClass = RoadClass.unpaved,
@@ -212,6 +213,9 @@ class SurfaceRun {
   final bool isBog;
   final String? bogKind;
   final double bogFactor;
+
+  /// Уверенность болотного признака: 1.0 — OSM, ниже — растровый fallback.
+  final double bogConfidence;
   final String surfaceSource;
 
   /// 0..1: степень урбанизации для расчистки снега.
@@ -286,6 +290,7 @@ class EnvironmentData {
     this.snow = const [],
     this.fords = const [],
     this.surfaceCoverage = 0,
+    this.rasterCoverage = 0,
     this.hasForecast = false,
     this.warning,
   });
@@ -296,7 +301,12 @@ class EnvironmentData {
   final List<SettlementRun> settlements;
   final List<SnowEstimate> snow;
   final List<Ford> fords;
+
+  /// Доля точек, для которых нашёлся путь OSM.
   final double surfaceCoverage;
+
+  /// Доля точек, где тип покрытия уточнён растром (WorldCover).
+  final double rasterCoverage;
 
   /// `false` — прогноза нет, погодную полосу не рисуем.
   final bool hasForecast;
