@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Сеть нужна для Open-Meteo и Overpass. В debug/profile Flutter
+         добавляет разрешение сам, но release-сборке оно обязательно здесь. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="uRunCalc"
         android:name="${applicationName}"
