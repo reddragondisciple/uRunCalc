@@ -72,7 +72,8 @@ class OverpassOsmProvider implements OsmProvider {
   OverpassOsmProvider({
     http.Client? client,
     List<String>? endpoints,
-    this.timeout = const Duration(seconds: 60),
+    this.timeout = const Duration(seconds: 25),
+    this.totalBudget = const Duration(seconds: 45),
   }) : _client = client ?? http.Client(),
        endpoints =
            endpoints ??
@@ -84,7 +85,13 @@ class OverpassOsmProvider implements OsmProvider {
 
   final http.Client _client;
   final List<String> endpoints;
+
+  /// Таймаут одного запроса к зеркалу.
   final Duration timeout;
+
+  /// Общий лимит на все зеркала: при недоступной сети расчёт не должен
+  /// висеть минутами. Лучше вернуть грунт и предупреждение.
+  final Duration totalBudget;
 
   @override
   Future<OsmData> fetch({required List<TrackSamplePoint> points}) async {
@@ -98,7 +105,7 @@ class OverpassOsmProvider implements OsmProvider {
 
   String _buildQuery(String bbox) {
     return '''
-[out:json][timeout:60];
+[out:json][timeout:25];
 (
   way["highway"]($bbox);
   way["natural"~"wetland|bog|marsh|swamp|wood|scrub|grassland|heath|sand|bare_rock|scree|shingle"]($bbox);
@@ -113,27 +120,27 @@ out tags geom;
 
   Future<String> _request(String query) async {
     Object? lastError;
+    final deadline = DateTime.now().add(totalBudget);
     for (final endpoint in endpoints) {
-      for (var attempt = 0; attempt < 2; attempt++) {
-        try {
-          final response = await _client
-              .post(
-                Uri.parse(endpoint),
-                headers: const {
-                  'User-Agent': 'uRunCalc/2.0 (non-commercial)',
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: {'data': query},
-              )
-              .timeout(timeout);
-          if (response.statusCode == 200) return response.body;
-          lastError = OsmException(
-            'Overpass $endpoint вернул ${response.statusCode}',
-          );
-        } catch (error) {
-          lastError = error;
-        }
-        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      try {
+        final response = await _client
+            .post(
+              Uri.parse(endpoint),
+              headers: const {
+                'User-Agent': 'uRunCalc/2.0 (non-commercial)',
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: {'data': query},
+            )
+            .timeout(remaining < timeout ? remaining : timeout);
+        if (response.statusCode == 200) return response.body;
+        lastError = OsmException(
+          'Overpass $endpoint вернул ${response.statusCode}',
+        );
+      } catch (error) {
+        lastError = error;
       }
     }
     throw OsmException('Overpass недоступен: $lastError');

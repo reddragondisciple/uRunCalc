@@ -5,6 +5,7 @@
 /// Явный `surface` OSM этот источник не перекрывает (§6.6).
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -95,10 +96,16 @@ abstract class WorldCoverTileReader {
 
 /// Провайдер WorldCover с кэшем точек: итерации погоды не перечитывают растр.
 class WorldCoverProvider implements RasterCoverageProvider {
-  WorldCoverProvider({WorldCoverTileReader? reader})
-    : _reader = reader ?? CogWorldCoverTileReader();
+  WorldCoverProvider({
+    WorldCoverTileReader? reader,
+    this.totalBudget = const Duration(seconds: 15),
+  }) : _reader = reader ?? CogWorldCoverTileReader();
 
   final WorldCoverTileReader _reader;
+
+  /// Общий лимит на все тайлы. Растр — необязательное уточнение: если сеть
+  /// медленная, лучше быстро вернуть OSM и предупреждение, чем ждать минуты.
+  final Duration totalBudget;
 
   /// Ключ — округлённые координаты (~11 м), значение — кандидат или `null`.
   /// `null` кэшируется намеренно: в воде/за пределами тайла растра нет.
@@ -125,13 +132,21 @@ class WorldCoverProvider implements RasterCoverageProvider {
     }
 
     String? warning;
+    final deadline = DateTime.now().add(totalBudget);
     for (final entry in pending.entries) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        warning ??= 'WorldCover: лимит времени, часть точек без растра';
+        break;
+      }
       final indices = entry.value;
       try {
-        final codes = await _reader.readTile(
-          tile: entry.key,
-          points: [for (final i in indices) points[i]],
-        );
+        final codes = await _reader
+            .readTile(
+              tile: entry.key,
+              points: [for (final i in indices) points[i]],
+            )
+            .timeout(remaining);
         for (var j = 0; j < indices.length; j++) {
           final candidate = WorldCoverClass.fromCode(
             j < codes.length ? codes[j] : null,
@@ -139,6 +154,8 @@ class WorldCoverProvider implements RasterCoverageProvider {
           candidates[indices[j]] = candidate;
           _cache[_pointKey(points[indices[j]])] = candidate;
         }
+      } on TimeoutException {
+        warning ??= 'WorldCover: лимит времени, часть точек без растра';
       } catch (error) {
         // Сеть/декодер не должны ронять весь расчёт: остаётся OSM.
         warning ??= 'WorldCover недоступен: покрытие уточнено только по OSM';
@@ -158,7 +175,7 @@ class CogWorldCoverTileReader implements WorldCoverTileReader {
     http.Client? client,
     this.baseUrl = _defaultBaseUrl,
     this.targetPageWidth = 4500,
-    this.timeout = const Duration(seconds: 20),
+    this.timeout = const Duration(seconds: 8),
   }) : _client = client ?? http.Client();
 
   final http.Client _client;

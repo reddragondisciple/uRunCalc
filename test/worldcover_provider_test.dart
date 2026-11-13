@@ -187,6 +187,22 @@ void main() {
     expect(calls, 2);
   });
 
+  test('provider stops at its time budget', () async {
+    final reader = _FakeTileReader((tile, points) async {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      return [30];
+    });
+    final provider = WorldCoverProvider(
+      reader: reader,
+      totalBudget: const Duration(milliseconds: 20),
+    );
+
+    final result = await provider.sample(points: [_point(56.0, 40.0)]);
+
+    expect(result.warning, contains('лимит'));
+    expect(result.candidates.single, isNull);
+  });
+
   test('missing codes in a tile response become null candidates', () async {
     final reader = _FakeTileReader((tile, points) async => [30]);
     final provider = WorldCoverProvider(reader: reader);

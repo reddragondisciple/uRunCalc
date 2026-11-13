@@ -740,7 +740,8 @@ extension _PaceEventsPart on _PaceViewState {
       // Пока план меняется заметнее 1%, уточняем времена (обычно 2 прохода).
       if (settings.weatherEnabled &&
           settings.startUtc != null &&
-          _mountainEnabled) {
+          _mountainEnabled &&
+          data.weather.isNotEmpty) {
         for (var pass = 0; pass < 2; pass++) {
           final before = _plannedElapsedSec();
           _environmentData = data;
@@ -755,6 +756,7 @@ extension _PaceEventsPart on _PaceViewState {
             profile: profile,
             flatPaceSecPerKm: _flatPaceForEnvironment(),
             movingSecAt: _arrivalSecAt,
+            retryFailed: false,
           );
           if (!mounted || request != _environmentRequest) return;
         }

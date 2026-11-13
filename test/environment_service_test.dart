@@ -69,6 +69,16 @@ class _FailingOsm implements OsmProvider {
   }
 }
 
+class _CountingFailingOsm implements OsmProvider {
+  int calls = 0;
+
+  @override
+  Future<OsmData> fetch({required List<TrackSamplePoint> points}) async {
+    calls++;
+    throw const OsmException('нет сети');
+  }
+}
+
 class _FakeWeather implements WeatherProvider {
   const _FakeWeather({
     this.samples = const [],
@@ -569,6 +579,30 @@ void main() {
       );
     }
 
+    expect(raster.calls, 1);
+  });
+
+  test('retryFailed false reuses known network failures', () async {
+    final osm = _CountingFailingOsm();
+    final raster = _FailingRaster();
+    final service = EnvironmentService(
+      osm: osm,
+      weather: const _FakeWeather(),
+      raster: raster,
+    );
+    final parsed = _track();
+
+    for (var i = 0; i < 2; i++) {
+      await service.compute(
+        parsed: parsed,
+        settings: const EnvironmentSettings(surfaceEnabled: true),
+        profile: profile,
+        flatPaceSecPerKm: 360,
+        retryFailed: i == 0,
+      );
+    }
+
+    expect(osm.calls, 1);
     expect(raster.calls, 1);
   });
 

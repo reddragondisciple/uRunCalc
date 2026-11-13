@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -150,6 +151,26 @@ void main() {
       expect(requested!.path, '/v1/archive');
       expect(requested!.queryParameters['start_date'], '2026-07-06');
     });
+
+    test(
+      'a hanging request times out instead of blocking the screen',
+      () async {
+        final provider = OpenMeteoProvider(
+          client: MockClient((_) => Completer<http.Response>().future),
+          now: () => DateTime.utc(2026, 7, 20, 12),
+          timeout: const Duration(milliseconds: 20),
+          totalBudget: const Duration(seconds: 1),
+        );
+
+        await expectLater(
+          provider.fetch(
+            queries: [_query(DateTime.utc(2026, 7, 24, 4))],
+            profile: profile,
+          ),
+          throwsA(isA<TimeoutException>()),
+        );
+      },
+    );
 
     test('a non-200 response throws WeatherException', () async {
       final provider = OpenMeteoProvider(

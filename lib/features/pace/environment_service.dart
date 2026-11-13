@@ -34,10 +34,17 @@ class EnvironmentService {
   String? _osmCacheKey;
   OsmData? _osmCache;
 
+  /// Ключ трека, для которого OSM уже не ответил. Итерации времени прибытия
+  /// переиспользуют эту неудачу, чтобы не ждать сеть по второму кругу.
+  String? _osmFailedKey;
+
   /// Готовые участки покрытия (OSM + растр). Кэшируем только если оба
   /// источника ответили успешно, иначе следующий расчёт повторит растр.
   String? _surfaceCacheKey;
   OsmSurfaceResult? _surfaceCache;
+
+  /// Ключ трека, для которого растр уже не ответил.
+  String? _rasterFailedKey;
 
   Future<EnvironmentData> compute({
     required ParsedTrack parsed,
@@ -45,6 +52,10 @@ class EnvironmentService {
     required FactorProfile profile,
     required double flatPaceSecPerKm,
     double Function(double distanceM)? movingSecAt,
+
+    /// Повторять ли сетевые запросы, которые уже завершились ошибкой для
+    /// этого трека. Итерации времени прибытия передают `false`.
+    bool retryFailed = true,
   }) async {
     if (!settings.anyEnabled) {
       return EnvironmentData(settings: settings);
@@ -70,15 +81,21 @@ class EnvironmentService {
       var osmOk = true;
       if (_osmCacheKey == pointsKey && _osmCache != null) {
         osmData = _osmCache!;
+      } else if (!retryFailed && _osmFailedKey == pointsKey) {
+        osmData = const OsmData();
+        warning.add('OSM недоступен: покрытие считается грунтом');
+        osmOk = false;
       } else {
         try {
           osmData = await _osm.fetch(points: surfacePoints);
           _osmCacheKey = pointsKey;
           _osmCache = osmData;
+          _osmFailedKey = null;
         } catch (error) {
           osmData = const OsmData();
           warning.add('OSM недоступен: покрытие считается грунтом');
           // Сетевую ошибку не кэшируем: следующий пересчёт попробует снова.
+          _osmFailedKey = pointsKey;
           osmOk = false;
         }
       }
@@ -86,16 +103,25 @@ class EnvironmentService {
       var rasterSamples = const <RasterCandidate?>[];
       var rasterOk = true;
       if (needsRaster) {
-        try {
-          final rasterResult = await _raster.sample(points: surfacePoints);
-          rasterSamples = rasterResult.candidates;
-          if (rasterResult.warning != null) {
-            warning.add(rasterResult.warning!);
-            rasterOk = false;
-          }
-        } catch (error) {
+        if (!retryFailed && _rasterFailedKey == pointsKey) {
           warning.add('Растр покрытия недоступен: уточнение только по OSM');
           rasterOk = false;
+        } else {
+          try {
+            final rasterResult = await _raster.sample(points: surfacePoints);
+            rasterSamples = rasterResult.candidates;
+            if (rasterResult.warning != null) {
+              warning.add(rasterResult.warning!);
+              _rasterFailedKey = pointsKey;
+              rasterOk = false;
+            } else {
+              _rasterFailedKey = null;
+            }
+          } catch (error) {
+            warning.add('Растр покрытия недоступен: уточнение только по OSM');
+            _rasterFailedKey = pointsKey;
+            rasterOk = false;
+          }
         }
       }
 
@@ -269,7 +295,8 @@ class EnvironmentService {
       surfaceCoverage: surfaceResult.coverage,
       rasterCoverage: surfaceResult.rasterCoverage,
       hasForecast: hasWeatherBand,
-      warning: warning.isEmpty ? null : warning.join('; '),
+      // Итерации времени прибытия могут повторить то же предупреждение.
+      warning: warning.isEmpty ? null : warning.toSet().join('; '),
     );
   }
 

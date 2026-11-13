@@ -69,6 +69,8 @@ class OpenMeteoProvider implements WeatherProvider {
     this.forecastUrl = 'https://api.open-meteo.com/v1/forecast',
     this.archiveUrl = 'https://archive-api.open-meteo.com/v1/archive',
     this.chunkSize = 20,
+    this.timeout = const Duration(seconds: 25),
+    this.totalBudget = const Duration(seconds: 45),
   }) : _client = client ?? http.Client(),
        _now = now ?? DateTime.now;
 
@@ -77,6 +79,14 @@ class OpenMeteoProvider implements WeatherProvider {
   final String forecastUrl;
   final String archiveUrl;
   final int chunkSize;
+
+  /// Таймаут одного запроса: без него при «зависшей» сети экран бесконечно
+  /// показывает «считаем покрытие и погоду».
+  final Duration timeout;
+
+  /// Общий лимит на все чанки. Если часть точек успела загрузиться,
+  /// возвращаем её с предупреждением, а не теряем весь прогноз.
+  final Duration totalBudget;
 
   static final String _hourlyVariables = [
     'temperature_2m',
@@ -116,30 +126,49 @@ class OpenMeteoProvider implements WeatherProvider {
     final mode = _modeFor(earliest);
 
     final samples = <WeatherSample>[];
+    String? budgetWarning;
+    final deadline = DateTime.now().add(totalBudget);
     for (var from = 0; from < queries.length; from += chunkSize) {
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        budgetWarning = samples.isEmpty
+            ? 'Погода недоступна: превышен лимит времени'
+            : 'Погода: часть точек без прогноза (лимит времени)';
+        break;
+      }
       final chunk = queries.sublist(
         from,
         math.min(from + chunkSize, queries.length),
       );
-      final chunkSamples = await _fetchChunk(
-        chunk: chunk,
-        mode: mode,
-        earliest: earliest,
-        latest: latest,
-        profile: profile,
-      );
-      samples.addAll(chunkSamples);
+      try {
+        final chunkSamples = await _fetchChunk(
+          chunk: chunk,
+          mode: mode,
+          earliest: earliest,
+          latest: latest,
+          profile: profile,
+        ).timeout(remaining);
+        samples.addAll(chunkSamples);
+      } catch (error) {
+        // Первый чанк не загрузился — ошибка сети, пусть сервис поставит
+        // множитель 1.00. Если что-то уже есть, отдаём частичный прогноз.
+        if (samples.isEmpty) rethrow;
+        budgetWarning = 'Погода: часть точек без прогноза';
+        break;
+      }
     }
 
     return WeatherFetchResult(
       samples: samples,
       mode: mode,
       hasWeatherBand: mode != WeatherMode.normals,
-      warning: switch (mode) {
-        WeatherMode.normals => 'Прогноза нет: показаны климатические нормы',
-        WeatherMode.historical => 'Историческая погода из архива',
-        WeatherMode.forecast => null,
-      },
+      warning:
+          budgetWarning ??
+          switch (mode) {
+            WeatherMode.normals => 'Прогноза нет: показаны климатические нормы',
+            WeatherMode.historical => 'Историческая погода из архива',
+            WeatherMode.forecast => null,
+          },
     );
   }
 
@@ -185,7 +214,7 @@ class OpenMeteoProvider implements WeatherProvider {
       },
     );
 
-    final response = await _client.get(uri);
+    final response = await _client.get(uri).timeout(timeout);
     if (response.statusCode != 200) {
       throw WeatherException(
         'Open-Meteo вернул ${response.statusCode}: ${response.body}',
