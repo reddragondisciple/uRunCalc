@@ -336,7 +336,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   static const double _elevationRowHeight = 30;
 
   /// Высота встроенной полосы профиля в портрете, пикселей.
-  static const double _elevationStripHeight = 96;
+  static const double _elevationStripHeight = 112;
 
   /// Служебная клетка раскрытия в итоговом ряду высот, пикселей.
   static const double _elevationToggleWidth = 30;

@@ -40,6 +40,59 @@ double distanceGridStep(double rangeKm) {
   return 20;
 }
 
+/// Подпись типа покрытия для легенды и подсказки.
+String surfaceTypeLabel(SurfaceType type) => switch (type) {
+  SurfaceType.asphalt => 'Асфальт',
+  SurfaceType.concrete => 'Бетон',
+  SurfaceType.pavingStones => 'Плитка',
+  SurfaceType.compacted => 'Укатанный грунт',
+  SurfaceType.dirt => 'Грунт',
+  SurfaceType.ground => 'Земля',
+  SurfaceType.grass => 'Трава',
+  SurfaceType.sand => 'Песок',
+  SurfaceType.mud => 'Грязь',
+  SurfaceType.snowPacked => 'Укатанный снег',
+  SurfaceType.snowDeep => 'Глубокий снег',
+  SurfaceType.unknown => 'Неизвестно',
+};
+
+/// Процент покрытия: целые, а для мелких долей — «<1%».
+String formatSurfacePercent(double percent) {
+  if (percent <= 0) return '0%';
+  if (percent < 1) return '<1%';
+  return '${percent.round()}%';
+}
+
+/// Доля одного типа покрытия в длине трека.
+class SurfaceShare {
+  const SurfaceShare({required this.type, required this.percent});
+
+  final SurfaceType type;
+  final double percent;
+}
+
+/// Доли типов покрытия по длине трека, от большей к меньшей.
+///
+/// Считаем по длине участков, а не по числу точек: короткая плитка в городе
+/// не должна раздувать свой процент. Пустые участки пропускаем.
+List<SurfaceShare> surfaceShares(EnvironmentData? environment) {
+  if (environment == null || environment.surface.isEmpty) return const [];
+  final lengths = <SurfaceType, double>{};
+  var total = 0.0;
+  for (final run in environment.surface) {
+    final length = run.endM - run.startM;
+    if (length <= 0) continue;
+    lengths.update(run.type, (value) => value + length, ifAbsent: () => length);
+    total += length;
+  }
+  if (total <= 0) return const [];
+  final shares = [
+    for (final entry in lengths.entries)
+      SurfaceShare(type: entry.key, percent: entry.value / total * 100),
+  ]..sort((a, b) => b.percent.compareTo(a.percent));
+  return shares;
+}
+
 /// Цвет линии покрытия на графике. Легенды нет, цвет только различает типы.
 Color surfaceOverlayColor(SurfaceType type) => switch (type) {
   SurfaceType.asphalt => const Color(0xFFB0BEC5),
@@ -421,7 +474,7 @@ Future<void> showElevationChart(
     showDragHandle: true,
     useSafeArea: true,
     builder: (_) => FractionallySizedBox(
-      heightFactor: 0.5,
+      heightFactor: 0.62,
       child: _ElevationChartScaffold(
         data: data,
         landscape: false,
@@ -528,6 +581,10 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
     final touch = _touchKm == null
         ? null
         : nearestProfilePoint(data.profile, _touchKm!);
+    final touchRun = touch == null
+        ? null
+        : data.environment?.runAt(touch.km * 1000);
+    final shares = surfaceShares(data.environment);
 
     final content = Column(
       children: [
@@ -589,6 +646,40 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
             ),
           ),
         ),
+        if (shares.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                key: const ValueKey('elevation-chart-surface-legend'),
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  for (final share in shares)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: surfaceOverlayColor(share.type),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${surfaceTypeLabel(share.type)} '
+                          '${formatSurfacePercent(share.percent)}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
@@ -637,6 +728,9 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
                   km: touch.km.toStringAsFixed(2),
                   ele: touch.eleM.round().toString(),
                   grade: '${(touch.gradeFraction * 100).toStringAsFixed(1)}%',
+                  surface: touchRun == null
+                      ? null
+                      : surfaceTypeLabel(touchRun.type),
                 ),
                 key: const ValueKey('elevation-chart-touch'),
               ),

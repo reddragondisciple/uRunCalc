@@ -612,6 +612,7 @@ extension _PaceMountainPart on _PaceViewState {
                     fromKm: data.profile.first.km,
                     toKm: data.profile.last.km,
                     markers: data.markers,
+                    environment: _environmentData,
                   ),
                 )
               : Center(

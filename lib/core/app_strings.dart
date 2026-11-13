@@ -204,7 +204,8 @@ class AppStrings {
     required String km,
     required String ele,
     required String grade,
-  }) => '$km км · $ele м · $grade';
+    String? surface,
+  }) => '$km км · $ele м · $grade${surface == null ? '' : ' · $surface'}';
 
   static String elevationChartSegment({
     required String ascent,

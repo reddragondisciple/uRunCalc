@@ -6,6 +6,8 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+
 import '../gpx/parsed_track.dart';
 import 'environment_data.dart';
 import 'environment_factors.dart';
@@ -14,6 +16,16 @@ import 'factor_profile.dart';
 import 'osm_provider.dart';
 import 'raster_coverage.dart';
 import 'weather_provider.dart';
+
+/// Короткое описание сетевой ошибки для предупреждения и logcat.
+///
+/// Полный стек в SnackBar не нужен: важны тип ошибки и начало сообщения.
+String environmentErrorReason(Object error) {
+  final text = error.toString().replaceAll('\n', ' ');
+  final reason = text.length > 80 ? '${text.substring(0, 80)}…' : text;
+  debugPrint('uRunCalc environment: $reason');
+  return reason;
+}
 
 /// Считает покрытие, погоду, снег и итоговые множители для трека.
 class EnvironmentService {
@@ -37,6 +49,7 @@ class EnvironmentService {
   /// Ключ трека, для которого OSM уже не ответил. Итерации времени прибытия
   /// переиспользуют эту неудачу, чтобы не ждать сеть по второму кругу.
   String? _osmFailedKey;
+  String? _osmFailedReason;
 
   /// Готовые участки покрытия (OSM + растр). Кэшируем только если оба
   /// источника ответили успешно, иначе следующий расчёт повторит растр.
@@ -45,6 +58,7 @@ class EnvironmentService {
 
   /// Ключ трека, для которого растр уже не ответил.
   String? _rasterFailedKey;
+  String? _rasterFailedReason;
 
   Future<EnvironmentData> compute({
     required ParsedTrack parsed,
@@ -83,7 +97,7 @@ class EnvironmentService {
         osmData = _osmCache!;
       } else if (!retryFailed && _osmFailedKey == pointsKey) {
         osmData = const OsmData();
-        warning.add('OSM недоступен: покрытие считается грунтом');
+        warning.add(_osmWarning(_osmFailedReason));
         osmOk = false;
       } else {
         try {
@@ -91,11 +105,13 @@ class EnvironmentService {
           _osmCacheKey = pointsKey;
           _osmCache = osmData;
           _osmFailedKey = null;
+          _osmFailedReason = null;
         } catch (error) {
           osmData = const OsmData();
-          warning.add('OSM недоступен: покрытие считается грунтом');
-          // Сетевую ошибку не кэшируем: следующий пересчёт попробует снова.
           _osmFailedKey = pointsKey;
+          _osmFailedReason = environmentErrorReason(error);
+          warning.add(_osmWarning(_osmFailedReason));
+          // Сетевую ошибку не кэшируем: следующий пересчёт попробует снова.
           osmOk = false;
         }
       }
@@ -104,7 +120,7 @@ class EnvironmentService {
       var rasterOk = true;
       if (needsRaster) {
         if (!retryFailed && _rasterFailedKey == pointsKey) {
-          warning.add('Растр покрытия недоступен: уточнение только по OSM');
+          warning.add(_rasterWarning(_rasterFailedReason));
           rasterOk = false;
         } else {
           try {
@@ -113,13 +129,16 @@ class EnvironmentService {
             if (rasterResult.warning != null) {
               warning.add(rasterResult.warning!);
               _rasterFailedKey = pointsKey;
+              _rasterFailedReason = rasterResult.warning;
               rasterOk = false;
             } else {
               _rasterFailedKey = null;
+              _rasterFailedReason = null;
             }
           } catch (error) {
-            warning.add('Растр покрытия недоступен: уточнение только по OSM');
             _rasterFailedKey = pointsKey;
+            _rasterFailedReason = environmentErrorReason(error);
+            warning.add(_rasterWarning(_rasterFailedReason));
             rasterOk = false;
           }
         }
@@ -173,7 +192,7 @@ class EnvironmentService {
           hasWeatherBand = result.hasWeatherBand;
           if (result.warning != null) warning.add(result.warning!);
         } catch (error) {
-          warning.add('Погода недоступна: множитель 1.00');
+          warning.add(_weatherWarning(environmentErrorReason(error)));
         }
       }
     }
@@ -310,6 +329,18 @@ class EnvironmentService {
         '${last.lat.toStringAsFixed(5)},${last.lon.toStringAsFixed(5)}:'
         '${last.distanceM.round()}';
   }
+
+  static String _osmWarning(String? reason) => reason == null
+      ? 'OSM недоступен: покрытие считается грунтом'
+      : 'OSM недоступен ($reason): покрытие считается грунтом';
+
+  static String _rasterWarning(String? reason) => reason == null
+      ? 'Растр покрытия недоступен: уточнение только по OSM'
+      : 'Растр покрытия недоступен ($reason): уточнение только по OSM';
+
+  static String _weatherWarning(String? reason) => reason == null
+      ? 'Погода недоступна: множитель 1.00'
+      : 'Погода недоступна ($reason): множитель 1.00';
 
   static WeatherSample? _nearestWeather(
     List<WeatherSample> samples,

@@ -277,6 +277,23 @@ void main() {
       );
     });
 
+    testWidgets('тап добавляет тип покрытия в подсказку', (tester) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      await tester.tapAt(at(tester, 0.5)); // 10 км — грунт
+      await settleTap(tester);
+
+      final tooltip = tester.widget<Text>(
+        find.byKey(const ValueKey('elevation-chart-touch')),
+      );
+      expect(tooltip.data, contains('10.00 км'));
+      expect(tooltip.data, contains('Грунт'));
+    });
+
     testWidgets('двойной тап фокусирует сегмент и показывает чип сброса', (
       tester,
     ) async {
@@ -344,10 +361,105 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    test('цвета покрытия, мокрости и погоды заданы для всех значений', () {
+    testWidgets('в окне карты есть расшифровка долей покрытия', (tester) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      expect(
+        find.byKey(const ValueKey('elevation-chart-surface-legend')),
+        findsOneWidget,
+      );
+      expect(find.text('Асфальт 25%'), findsOneWidget);
+      expect(find.text('Грунт 50%'), findsOneWidget);
+      expect(find.text('Грязь 25%'), findsOneWidget);
+    });
+
+    testWidgets('без окружения расшифровки покрытия нет', (tester) async {
+      await _pumpHost(tester, size: portrait, data: _data());
+
+      expect(
+        find.byKey(const ValueKey('elevation-chart-surface-legend')),
+        findsNothing,
+      );
+    });
+
+    test('доли покрытия взвешены по длине и отсортированы', () {
+      const environment = EnvironmentData(
+        settings: EnvironmentSettings(surfaceEnabled: true),
+        surface: [
+          SurfaceRun(
+            startM: 0,
+            endM: 2000,
+            type: SurfaceType.asphalt,
+            wetness: Wetness.dry,
+            confidence: 1,
+          ),
+          SurfaceRun(
+            startM: 2000,
+            endM: 9000,
+            type: SurfaceType.dirt,
+            wetness: Wetness.dry,
+            confidence: 1,
+          ),
+          SurfaceRun(
+            startM: 9000,
+            endM: 9990,
+            type: SurfaceType.mud,
+            wetness: Wetness.bog,
+            confidence: 1,
+          ),
+          SurfaceRun(
+            startM: 9990,
+            endM: 10000,
+            type: SurfaceType.snowPacked,
+            wetness: Wetness.dry,
+            confidence: 1,
+          ),
+        ],
+      );
+
+      final shares = surfaceShares(environment);
+
+      expect(shares.map((share) => share.type), [
+        SurfaceType.dirt,
+        SurfaceType.asphalt,
+        SurfaceType.mud,
+        SurfaceType.snowPacked,
+      ]);
+      expect(shares[0].percent, closeTo(70, 0.001));
+      expect(shares[1].percent, closeTo(20, 0.001));
+      expect(shares[2].percent, closeTo(9.9, 0.001));
+      expect(shares[3].percent, closeTo(0.1, 0.001));
+      expect(formatSurfacePercent(shares[3].percent), '<1%');
+    });
+
+    test('пустое окружение не даёт долей покрытия', () {
+      expect(surfaceShares(null), isEmpty);
+      expect(
+        surfaceShares(const EnvironmentData(settings: EnvironmentSettings())),
+        isEmpty,
+      );
+    });
+
+    test('у каждого типа покрытия есть подпись', () {
       for (final type in SurfaceType.values) {
+        expect(surfaceTypeLabel(type), isNotEmpty);
         expect(surfaceOverlayColor(type), isA<Color>());
       }
+    });
+
+    test('проценты покрытия читаются без ложной точности', () {
+      expect(formatSurfacePercent(0), '0%');
+      expect(formatSurfacePercent(0.4), '<1%');
+      expect(formatSurfacePercent(9.6), '10%');
+      expect(formatSurfacePercent(50), '50%');
+      expect(formatSurfacePercent(100), '100%');
+    });
+
+    test('цвета покрытия, мокрости и погоды заданы для всех значений', () {
       for (final wetness in Wetness.values) {
         expect(wetnessOverlayColor(wetness), isA<Color>());
       }

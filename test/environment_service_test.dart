@@ -345,6 +345,7 @@ void main() {
     expect(data.surface.every((run) => run.type == SurfaceType.dirt), isTrue);
     expect(data.surfaceCoverage, 0);
     expect(data.warning, contains('OSM'));
+    expect(data.warning, contains('нет сети'));
   });
 
   test('weather failure keeps the surface factor and warns', () async {
