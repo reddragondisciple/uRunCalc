@@ -176,6 +176,7 @@ class AppStrings {
       'Сначала загрузите трек GPX в горном режиме';
   static const String environmentLoading =
       'Считаем покрытие и погоду по треку…';
+  static const String environmentRefresh = 'Обновить данные';
   static String environmentCoverage(int percent) => 'Покрытие OSM: $percent%';
 
   static String environmentCoverageWithRaster(

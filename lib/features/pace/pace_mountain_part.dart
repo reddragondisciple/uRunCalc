@@ -326,6 +326,7 @@ extension _PaceMountainPart on _PaceViewState {
     // Окружение привязано к треку: после его смены старые множители
     // недействительны и будут пересчитаны заново.
     _environmentData = null;
+    _environmentReady = false;
     _environmentLoading = false;
     _environmentRequest++;
   }

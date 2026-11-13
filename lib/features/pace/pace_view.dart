@@ -26,6 +26,7 @@ import '../gpx/track_parse_async.dart';
 import '../gpx/track_store.dart';
 import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
+import 'environment_cache.dart';
 import 'environment_data.dart';
 import 'environment_service.dart';
 import 'factor_profile.dart';
@@ -145,6 +146,11 @@ TrackFileStore? debugTrackFileStoreOverride;
 Future<Map<String, dynamic>?> Function(String storageKey)?
 debugPaceStateLoaderOverride;
 
+/// Тестовая подмена расчёта окружения. Позволяет проверить кэш и кнопку
+/// обновления без реальной сети.
+@visibleForTesting
+EnvironmentService? debugEnvironmentServiceOverride;
+
 class PaceView extends StatefulWidget {
   const PaceView({super.key, required this.active, required this.surface});
 
@@ -249,18 +255,28 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   /// [EnvironmentSettings] снимка таблицы; вычисленные данные — в памяти.
   EnvironmentSettings _environment = EnvironmentSettings.empty;
 
-  /// Вычисленное окружение текущего трека. Не сохраняется.
+  /// Вычисленное окружение текущего трека. Сохраняется в
+  /// [EnvironmentCacheStore] и не сбрасывается при переключении дистанций.
   EnvironmentData? _environmentData;
   bool _environmentLoading = false;
+
+  /// Данные окружения готовы (посчитаны или восстановлены из кэша).
+  /// Пока флаг сброшен, загрузка трека попробует кэш и сеть.
+  bool _environmentReady = false;
+
+  final EnvironmentCacheStore _environmentCache = EnvironmentCacheStore();
 
   /// Номер запроса окружения: старый ответ не должен перезаписать новый.
   int _environmentRequest = 0;
 
   /// Сервис живёт вместе с экраном: OSM кэшируется на трек, поэтому
   /// итерации погоды не дёргают Overpass повторно.
-  final EnvironmentService _environmentService = EnvironmentService(
+  final EnvironmentService _ownedEnvironmentService = EnvironmentService(
     raster: WorldCoverProvider(),
   );
+
+  EnvironmentService get _environmentService =>
+      debugEnvironmentServiceOverride ?? _ownedEnvironmentService;
 
   /// Глобальный профиль коэффициентов, читается один раз.
   FactorProfile? _factorProfile;

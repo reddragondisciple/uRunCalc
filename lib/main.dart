@@ -5,7 +5,10 @@ import 'theme/app_colors.dart';
 
 export 'features/gpx/track_parse_async.dart' show debugParseTrackSynchronously;
 export 'features/pace/pace_view.dart'
-    show debugPaceStateLoaderOverride, debugTrackFileStoreOverride;
+    show
+        debugEnvironmentServiceOverride,
+        debugPaceStateLoaderOverride,
+        debugTrackFileStoreOverride;
 
 void main() {
   runApp(const CalculatorApp());

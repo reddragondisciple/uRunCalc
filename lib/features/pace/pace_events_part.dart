@@ -702,9 +702,29 @@ extension _PaceEventsPart on _PaceViewState {
   }
 
   /// Пересчитывает окружение, только если пользователь включил хотя бы одну
-  /// галочку. Иначе сеть не трогаем.
+  /// галочку. Сначала пробуем сохранённый результат: переключение дистанций
+  /// и запуск приложения не должны каждый раз ждать сеть.
   void _refreshEnvironmentIfEnabled() {
-    if (_environment.anyEnabled) unawaited(_refreshEnvironment());
+    if (!_environment.anyEnabled) return;
+    unawaited(_restoreEnvironmentOrRefresh());
+  }
+
+  Future<void> _restoreEnvironmentOrRefresh() async {
+    if (_environmentReady) return;
+    final key = _currentTrackKey();
+    final cached = await _environmentCache.read(key);
+    if (!mounted || key != _currentTrackKey()) return;
+    if (cached != null && cached.settings == _environment) {
+      _update(() {
+        _environmentData = cached;
+        _environmentReady = true;
+        _environmentLoading = false;
+      }, persist: false);
+      _recomputeMountainPlan();
+      return;
+    }
+    if (!mounted) return;
+    await _refreshEnvironment();
   }
 
   /// Пересчитывает окружение после применения галочек. Сеть может отвечать
@@ -713,10 +733,12 @@ extension _PaceEventsPart on _PaceViewState {
     final request = ++_environmentRequest;
     final parsed = _loadedTrack;
     final settings = _environment;
+    final cacheKey = _currentTrackKey();
     if (parsed == null || !settings.anyEnabled) {
       if (!mounted) return;
       _update(() {
         _environmentData = EnvironmentData(settings: settings);
+        _environmentReady = false;
         _environmentLoading = false;
       }, persist: false);
       _recomputeMountainPlan();
@@ -764,9 +786,12 @@ extension _PaceEventsPart on _PaceViewState {
 
       _update(() {
         _environmentData = data;
+        _environmentReady = true;
         _environmentLoading = false;
       }, persist: false);
       _recomputeMountainPlan();
+      await _environmentCache.write(cacheKey, data);
+      if (!mounted || request != _environmentRequest) return;
       if (data.warning != null) {
         ScaffoldMessenger.of(
           context,
@@ -780,6 +805,7 @@ extension _PaceEventsPart on _PaceViewState {
           settings: settings,
           warning: 'Не удалось рассчитать окружение',
         );
+        _environmentReady = false;
         _environmentLoading = false;
       }, persist: false);
     }
@@ -1062,7 +1088,6 @@ extension _PaceEventsPart on _PaceViewState {
             key: 'pace-settings-button',
             semanticLabel: AppStrings.paceSettingsSemantic,
             icon: Icons.settings_outlined,
-            loading: _environmentLoading,
             onTap: _locked
                 ? null
                 : () {
@@ -1095,6 +1120,24 @@ extension _PaceEventsPart on _PaceViewState {
                   : AppStrings.paceScaleActual,
               icon: Icons.zoom_out_map,
               onTap: _toggleScale,
+            ),
+          ),
+        ],
+        if (_environment.anyEnabled) ...[
+          const SizedBox(width: 4),
+          Expanded(
+            flex: 2,
+            child: _toolbarButton(
+              key: 'pace-refresh-environment',
+              semanticLabel: AppStrings.environmentRefresh,
+              icon: Icons.refresh,
+              loading: _environmentLoading,
+              onTap: _locked
+                  ? null
+                  : () {
+                      _hideKeyboard();
+                      unawaited(_refreshEnvironment());
+                    },
             ),
           ),
         ],

@@ -96,6 +96,27 @@ class EnvironmentSettings {
     if (shoe != null) 'shoe': shoe!.name,
   };
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EnvironmentSettings &&
+          surfaceEnabled == other.surfaceEnabled &&
+          weatherEnabled == other.weatherEnabled &&
+          shoesEnabled == other.shoesEnabled &&
+          groomedSnow == other.groomedSnow &&
+          startUtc == other.startUtc &&
+          shoe == other.shoe;
+
+  @override
+  int get hashCode => Object.hash(
+    surfaceEnabled,
+    weatherEnabled,
+    shoesEnabled,
+    groomedSnow,
+    startUtc,
+    shoe,
+  );
+
   static EnvironmentSettings tryFromJson(dynamic raw) {
     if (raw is! Map) return empty;
     return EnvironmentSettings(
@@ -359,5 +380,289 @@ class EnvironmentData {
     }
     if (covered <= 0) return 1.0;
     return weighted / covered;
+  }
+
+  /// Есть ли что сохранять в кэш окружения. Пустой результат (например,
+  /// ошибка сети без единого ответа) кэшировать нельзя: иначе экран будет
+  /// считать, что сеть уже отвечала. Растр тоже считается результатом:
+  /// при недоступном OSM он может дать покрытие.
+  bool get hasContent =>
+      weather.isNotEmpty || surfaceCoverage > 0 || rasterCoverage > 0;
+
+  /// JSON для кэша между переключениями дистанций и перезапусками.
+  Map<String, dynamic> toJson() => {
+    'settings': settings.toJson(),
+    'weather': [for (final sample in weather) _weatherToJson(sample)],
+    'surface': [for (final run in surface) _runToJson(run)],
+    'settlements': [
+      for (final run in settlements)
+        {
+          'startM': run.startM,
+          'endM': run.endM,
+          'context': run.context.name,
+          'urbanity': run.urbanity,
+          'confidence': run.confidence,
+        },
+    ],
+    'snow': [
+      for (final estimate in snow)
+        {
+          'startM': estimate.startM,
+          'endM': estimate.endM,
+          'effectiveDepthM': estimate.effectiveDepthM,
+          'probabilities': {
+            for (final entry in estimate.probabilities.entries)
+              entry.key.name: entry.value,
+          },
+        },
+    ],
+    'fords': [
+      for (final ford in fords)
+        {
+          'distanceM': ford.distanceM,
+          'confirmed': ford.confirmed,
+          if (ford.widthM != null) 'widthM': ford.widthM,
+        },
+    ],
+    'surfaceCoverage': surfaceCoverage,
+    'rasterCoverage': rasterCoverage,
+    'hasForecast': hasForecast,
+    if (warning != null) 'warning': warning,
+  };
+
+  /// Восстанавливает сохранённое окружение. Повреждённые записи не роняют
+  /// экран: возвращается `null`, и данные будут пересчитаны из сети.
+  static EnvironmentData? tryFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final rawSettings = raw['settings'];
+    if (rawSettings is! Map) return null;
+
+    final weather = <WeatherSample>[];
+    final rawWeather = raw['weather'];
+    if (rawWeather is List) {
+      for (final item in rawWeather) {
+        final sample = _weatherFromJson(item);
+        if (sample != null) weather.add(sample);
+      }
+    }
+
+    final surface = <SurfaceRun>[];
+    final rawSurface = raw['surface'];
+    if (rawSurface is List) {
+      for (final item in rawSurface) {
+        final run = _runFromJson(item);
+        if (run != null) surface.add(run);
+      }
+    }
+
+    final settlements = <SettlementRun>[];
+    final rawSettlements = raw['settlements'];
+    if (rawSettlements is List) {
+      for (final item in rawSettlements) {
+        final run = _settlementFromJson(item);
+        if (run != null) settlements.add(run);
+      }
+    }
+
+    final snow = <SnowEstimate>[];
+    final rawSnow = raw['snow'];
+    if (rawSnow is List) {
+      for (final item in rawSnow) {
+        final estimate = _snowFromJson(item);
+        if (estimate != null) snow.add(estimate);
+      }
+    }
+
+    final fords = <Ford>[];
+    final rawFords = raw['fords'];
+    if (rawFords is List) {
+      for (final item in rawFords) {
+        final ford = _fordFromJson(item);
+        if (ford != null) fords.add(ford);
+      }
+    }
+
+    return EnvironmentData(
+      settings: EnvironmentSettings.tryFromJson(rawSettings),
+      weather: weather,
+      surface: surface,
+      settlements: settlements,
+      snow: snow,
+      fords: fords,
+      surfaceCoverage: _readDouble(raw['surfaceCoverage']),
+      rasterCoverage: _readDouble(raw['rasterCoverage']),
+      hasForecast: raw['hasForecast'] == true,
+      warning: raw['warning'] is String ? raw['warning'] as String : null,
+    );
+  }
+
+  static Map<String, dynamic> _weatherToJson(WeatherSample sample) => {
+    'distanceM': sample.distanceM,
+    'timeUtcMs': sample.timeUtc.millisecondsSinceEpoch,
+    'lat': sample.lat,
+    'lon': sample.lon,
+    'elevationM': sample.elevationM,
+    'tempC': sample.tempC,
+    'apparentC': sample.apparentC,
+    'humidityPct': sample.humidityPct,
+    'precipMm': sample.precipMm,
+    'rainMm': sample.rainMm,
+    'et0Mm': sample.et0Mm,
+    'windKmh': sample.windKmh,
+    'snowfallCm': sample.snowfallCm,
+    'snowDepthM': sample.snowDepthM,
+    'soilMoistureTop': sample.soilMoistureTop,
+    'soilMoistureDeep': sample.soilMoistureDeep,
+    'soilMoistureEff': sample.soilMoistureEff,
+    if (sample.freezingLevelM != null) 'freezingLevelM': sample.freezingLevelM,
+    'mode': sample.mode.name,
+    'avgTemp5C': sample.avgTemp5C,
+    'frozenDays': sample.frozenDays,
+  };
+
+  static WeatherSample? _weatherFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final timeMs = raw['timeUtcMs'];
+    final mode = _readEnum(WeatherMode.values, raw['mode']);
+    if (timeMs is! num || !timeMs.isFinite || mode == null) return null;
+    return WeatherSample(
+      distanceM: _readDouble(raw['distanceM']),
+      timeUtc: DateTime.fromMillisecondsSinceEpoch(timeMs.round(), isUtc: true),
+      lat: _readDouble(raw['lat']),
+      lon: _readDouble(raw['lon']),
+      elevationM: _readDouble(raw['elevationM']),
+      tempC: _readDouble(raw['tempC']),
+      apparentC: _readDouble(raw['apparentC']),
+      humidityPct: _readDouble(raw['humidityPct']),
+      precipMm: _readDouble(raw['precipMm']),
+      rainMm: _readDouble(raw['rainMm']),
+      et0Mm: _readDouble(raw['et0Mm']),
+      windKmh: _readDouble(raw['windKmh']),
+      snowfallCm: _readDouble(raw['snowfallCm']),
+      snowDepthM: _readDouble(raw['snowDepthM']),
+      soilMoistureTop: _readDouble(raw['soilMoistureTop']),
+      soilMoistureDeep: _readDouble(raw['soilMoistureDeep']),
+      soilMoistureEff: _readDouble(raw['soilMoistureEff']),
+      freezingLevelM: raw['freezingLevelM'] is num
+          ? _readDouble(raw['freezingLevelM'])
+          : null,
+      mode: mode,
+      avgTemp5C: _readDouble(raw['avgTemp5C']),
+      frozenDays: _readInt(raw['frozenDays']),
+    );
+  }
+
+  static Map<String, dynamic> _runToJson(SurfaceRun run) => {
+    'startM': run.startM,
+    'endM': run.endM,
+    'type': run.type.name,
+    'wetness': run.wetness.name,
+    'confidence': run.confidence,
+    'isBog': run.isBog,
+    if (run.bogKind != null) 'bogKind': run.bogKind,
+    'bogFactor': run.bogFactor,
+    'bogConfidence': run.bogConfidence,
+    'surfaceSource': run.surfaceSource,
+    'urbanity': run.urbanity,
+    'roadClass': run.roadClass.name,
+    'isFord': run.isFord,
+    'factor': run.factor,
+    'heatFactor': run.heatFactor,
+    'snowFactor': run.snowFactor,
+    'shoeFactor': run.shoeFactor,
+  };
+
+  static SurfaceRun? _runFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final start = _readDouble(raw['startM'], double.nan);
+    final end = _readDouble(raw['endM'], double.nan);
+    if (!start.isFinite || !end.isFinite || end < start) return null;
+    return SurfaceRun(
+      startM: start,
+      endM: end,
+      type: _readEnum(SurfaceType.values, raw['type']) ?? SurfaceType.unknown,
+      wetness: _readEnum(Wetness.values, raw['wetness']) ?? Wetness.dry,
+      confidence: _readDouble(raw['confidence']),
+      isBog: raw['isBog'] == true,
+      bogKind: raw['bogKind'] is String ? raw['bogKind'] as String : null,
+      bogFactor: _readDouble(raw['bogFactor'], 1),
+      bogConfidence: _readDouble(raw['bogConfidence'], 1),
+      surfaceSource: raw['surfaceSource'] is String
+          ? raw['surfaceSource'] as String
+          : 'default',
+      urbanity: _readDouble(raw['urbanity']),
+      roadClass:
+          _readEnum(RoadClass.values, raw['roadClass']) ?? RoadClass.unpaved,
+      isFord: raw['isFord'] == true,
+      factor: _readDouble(raw['factor'], 1),
+      heatFactor: _readDouble(raw['heatFactor'], 1),
+      snowFactor: _readDouble(raw['snowFactor'], 1),
+      shoeFactor: _readDouble(raw['shoeFactor'], 1),
+    );
+  }
+
+  static SettlementRun? _settlementFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final start = _readDouble(raw['startM'], double.nan);
+    final end = _readDouble(raw['endM'], double.nan);
+    final context = _readEnum(SettlementContext.values, raw['context']);
+    if (!start.isFinite || !end.isFinite || end < start || context == null) {
+      return null;
+    }
+    return SettlementRun(
+      startM: start,
+      endM: end,
+      context: context,
+      urbanity: _readDouble(raw['urbanity']),
+      confidence: _readDouble(raw['confidence']),
+    );
+  }
+
+  static SnowEstimate? _snowFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final start = _readDouble(raw['startM'], double.nan);
+    final end = _readDouble(raw['endM'], double.nan);
+    if (!start.isFinite || !end.isFinite || end < start) return null;
+    final probabilities = <SnowState, double>{};
+    final rawProbabilities = raw['probabilities'];
+    if (rawProbabilities is Map) {
+      for (final entry in rawProbabilities.entries) {
+        final state = _readEnum(SnowState.values, entry.key);
+        if (state == null || entry.value is! num) continue;
+        probabilities[state] = _readDouble(entry.value);
+      }
+    }
+    if (probabilities.isEmpty) return null;
+    return SnowEstimate(
+      startM: start,
+      endM: end,
+      effectiveDepthM: _readDouble(raw['effectiveDepthM']),
+      probabilities: probabilities,
+    );
+  }
+
+  static Ford? _fordFromJson(dynamic raw) {
+    if (raw is! Map) return null;
+    final distance = _readDouble(raw['distanceM'], double.nan);
+    if (!distance.isFinite) return null;
+    return Ford(
+      distanceM: distance,
+      confirmed: raw['confirmed'] == true,
+      widthM: raw['widthM'] is num ? _readDouble(raw['widthM']) : null,
+    );
+  }
+
+  static double _readDouble(dynamic value, [double fallback = 0]) =>
+      value is num && value.isFinite ? value.toDouble() : fallback;
+
+  static int _readInt(dynamic value, [int fallback = 0]) =>
+      value is num && value.isFinite ? value.round() : fallback;
+
+  static T? _readEnum<T extends Enum>(List<T> values, dynamic raw) {
+    if (raw is! String) return null;
+    for (final value in values) {
+      if (value.name == raw) return value;
+    }
+    return null;
   }
 }
