@@ -42,13 +42,26 @@ GpxTrack parseGpx(String source) {
     );
   }
 
-  List<XmlElement>? segments;
+  List<List<XmlElement>>? segments;
   for (final trk in _children(root, 'trk')) {
-    final candidates = _children(trk, 'trkseg').toList();
-    if (candidates.any((seg) => _children(seg, 'trkpt').isNotEmpty)) {
+    final candidates = [
+      for (final seg in _children(trk, 'trkseg'))
+        _children(seg, 'trkpt').toList(),
+    ];
+    if (candidates.any((points) => points.isNotEmpty)) {
       segments = candidates;
       break;
     }
+  }
+  // Suunto и другие планировщики часто отдают маршрут как `rte/rtept`,
+  // без `trk`. Для расчёта высот и покрытия такой файл подходит так же,
+  // как трек: времени в нём нет, поэтому hasTime останется false.
+  if (segments == null) {
+    final routes = [
+      for (final rte in _children(root, 'rte'))
+        _children(rte, 'rtept').toList(),
+    ];
+    if (routes.any((points) => points.isNotEmpty)) segments = routes;
   }
   if (segments == null) {
     throw const GpxFormatException('В файле нет трека с точками');
@@ -61,8 +74,7 @@ GpxTrack parseGpx(String source) {
   final segmentStarts = <int>[];
   var dropped = 0;
 
-  for (final seg in segments) {
-    final points = _children(seg, 'trkpt');
+  for (final points in segments) {
     if (points.isEmpty) continue;
     final segmentStart = lats.length;
     segmentStarts.add(segmentStart);

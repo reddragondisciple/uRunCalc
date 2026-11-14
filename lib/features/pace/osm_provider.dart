@@ -78,7 +78,9 @@ class OverpassOsmProvider implements OsmProvider {
        endpoints =
            endpoints ??
            const [
-             'https://overpass.osm.ch/api/interpreter',
+             // overpass.osm.ch не используем: это выгрузка только Швейцарии.
+             // Для остальных стран она отвечает 200 с пустым elements.
+             // 'https://overpass.osm.ch/api/interpreter',
              'https://overpass.private.coffee/api/interpreter',
              'https://overpass-api.de/api/interpreter',
              'https://overpass.kumi.systems/api/interpreter',
@@ -186,6 +188,9 @@ out tags geom;
           geometry: geometry,
         ),
       );
+    }
+    if (features.isEmpty && places.isEmpty) {
+      return const OsmData(warning: 'OSM не вернул объектов в районе трека');
     }
     return OsmData(features: features, places: places);
   }

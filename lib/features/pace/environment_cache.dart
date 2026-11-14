@@ -17,7 +17,7 @@ class EnvironmentCacheStore {
     this.maxEntries = 12,
   });
 
-  static const String defaultStorageKey = 'environment_cache_v1';
+  static const String defaultStorageKey = 'environment_cache_v2';
   static const int _schemaVersion = 1;
 
   final String storageKey;

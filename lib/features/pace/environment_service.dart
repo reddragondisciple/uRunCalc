@@ -13,8 +13,10 @@ import 'environment_data.dart';
 import 'environment_factors.dart';
 import 'environment_sampling.dart';
 import 'factor_profile.dart';
+import 'nasa_power_provider.dart';
 import 'osm_provider.dart';
 import 'raster_coverage.dart';
+import 'weather_fallback_provider.dart';
 import 'weather_provider.dart';
 
 /// Короткое описание сетевой ошибки для предупреждения и logcat.
@@ -34,7 +36,12 @@ class EnvironmentService {
     WeatherProvider? weather,
     RasterCoverageProvider? raster,
   }) : _osm = osm ?? OverpassOsmProvider(),
-       _weather = weather ?? OpenMeteoProvider(),
+       _weather =
+           weather ??
+           FallbackWeatherProvider(
+             primary: OpenMeteoProvider(),
+             fallback: NasaPowerProvider(),
+           ),
        _raster = raster ?? const NoopRasterCoverageProvider();
 
   final OsmProvider _osm;
@@ -95,6 +102,7 @@ class EnvironmentService {
       var osmOk = true;
       if (_osmCacheKey == pointsKey && _osmCache != null) {
         osmData = _osmCache!;
+        if (osmData.warning != null) warning.add(osmData.warning!);
       } else if (!retryFailed && _osmFailedKey == pointsKey) {
         osmData = const OsmData();
         warning.add(_osmWarning(_osmFailedReason));
@@ -106,6 +114,7 @@ class EnvironmentService {
           _osmCache = osmData;
           _osmFailedKey = null;
           _osmFailedReason = null;
+          if (osmData.warning != null) warning.add(osmData.warning!);
         } catch (error) {
           osmData = const OsmData();
           _osmFailedKey = pointsKey;

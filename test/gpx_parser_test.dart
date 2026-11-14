@@ -55,6 +55,26 @@ void main() {
       expect(track.timesSec.every((t) => t.isNaN), isTrue);
     });
 
+    test('читает маршрут rte/rtept как трек без времени', () {
+      const source = '''
+<?xml version="1.0"?>
+<gpx version="1.1" creator="Suunto app">
+  <rte>
+    <name>suuntoapp-TrailRunning-2026-07-24</name>
+    <rtept lat="56.4338" lon="40.4175"><ele>108.6</ele></rtept>
+    <rtept lat="56.4337" lon="40.4176"><ele>108.8</ele></rtept>
+    <rtept lat="56.4336" lon="40.4178"><ele>109.0</ele></rtept>
+  </rte>
+</gpx>
+''';
+      final track = parseGpx(source);
+      expect(track.length, 3);
+      expect(track.segmentStarts, [0]);
+      expect(track.hasElevation, isTrue);
+      expect(track.hasTime, isFalse);
+      expect(track.eles[2], 109.0);
+    });
+
     test('не GPX — ошибка', () {
       expect(
         () => parseGpx('<html></html>'),
