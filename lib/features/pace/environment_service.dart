@@ -35,7 +35,12 @@ class EnvironmentService {
     OsmProvider? osm,
     WeatherProvider? weather,
     RasterCoverageProvider? raster,
-  }) : _osm = osm ?? OverpassOsmProvider(),
+  }) : _osm =
+           osm ??
+           FallbackOsmProvider(
+             primary: OverpassOsmProvider(),
+             fallback: OsmApiProvider(),
+           ),
        _weather =
            weather ??
            FallbackWeatherProvider(

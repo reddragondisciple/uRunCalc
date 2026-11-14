@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
+import 'package:xml/xml.dart';
 
 import 'environment_data.dart';
 import 'environment_sampling.dart';
@@ -212,23 +213,212 @@ out tags geom;
     return null;
   }
 
-  static String _bbox(List<TrackSamplePoint> points) {
-    var minLat = points.first.lat;
-    var maxLat = points.first.lat;
-    var minLon = points.first.lon;
-    var maxLon = points.first.lon;
-    for (final point in points) {
-      minLat = math.min(minLat, point.lat);
-      maxLat = math.max(maxLat, point.lat);
-      minLon = math.min(minLon, point.lon);
-      maxLon = math.max(maxLon, point.lon);
+  static String _bbox(List<TrackSamplePoint> points) =>
+      _boundsOf(points).overpass;
+}
+
+/// OSM API (`/api/0.6/map`) — резерв, когда Overpass недоступен.
+///
+/// API отдаёт весь кусок карты в XML: узлы с координатами, пути со ссылками
+/// на узлы. Это тяжелее Overpass и ограничено площадью ~0,25 кв. градуса,
+/// зато сервер `api.openstreetmap.org` обычно доступнее зеркал Overpass.
+class OsmApiProvider implements OsmProvider {
+  OsmApiProvider({
+    http.Client? client,
+    this.endpoint = 'https://api.openstreetmap.org/api/0.6/map',
+    this.timeout = const Duration(seconds: 25),
+    this.maxAreaDeg2 = 0.25,
+  }) : _client = client ?? http.Client();
+
+  final http.Client _client;
+  final String endpoint;
+  final Duration timeout;
+
+  /// Ограничение OSM API: 0,25 кв. градуса. Больше — сервер вернёт 400.
+  final double maxAreaDeg2;
+
+  @override
+  Future<OsmData> fetch({required List<TrackSamplePoint> points}) async {
+    if (points.length < 2) return const OsmData();
+
+    final bounds = _boundsOf(points);
+    if (bounds.areaDeg2 > maxAreaDeg2) {
+      throw OsmException(
+        'Область трека больше ${maxAreaDeg2.toStringAsFixed(2)} кв. градуса, '
+        'OSM API её не отдаст',
+      );
     }
-    const margin = 0.02;
-    return '${(minLat - margin).toStringAsFixed(5)},'
-        '${(minLon - margin).toStringAsFixed(5)},'
-        '${(maxLat + margin).toStringAsFixed(5)},'
-        '${(maxLon + margin).toStringAsFixed(5)}';
+
+    final uri = Uri.parse(
+      endpoint,
+    ).replace(queryParameters: {'bbox': bounds.osmApi});
+    final response = await _client
+        .get(
+          uri,
+          headers: const {'User-Agent': 'uRunCalc/2.0 (non-commercial)'},
+        )
+        .timeout(timeout);
+    if (response.statusCode != 200) {
+      throw OsmException('OSM API вернул ${response.statusCode}');
+    }
+    return _parse(response.body);
   }
+
+  OsmData _parse(String body) {
+    final XmlDocument document;
+    try {
+      document = XmlDocument.parse(body);
+    } on XmlException catch (error) {
+      throw OsmException('OSM API вернул не XML: ${error.message}');
+    }
+    final root = document.rootElement;
+    if (root.name.local != 'osm') {
+      throw const OsmException('OSM API вернул не карту OSM');
+    }
+
+    final nodes = <int, OsmPoint>{};
+    final nodeTags = <int, Map<String, String>>{};
+    final ways = <XmlElement>[];
+    for (final element in root.childElements) {
+      switch (element.name.local) {
+        case 'node':
+          final id = int.tryParse(element.getAttribute('id') ?? '');
+          final lat = double.tryParse(element.getAttribute('lat') ?? '');
+          final lon = double.tryParse(element.getAttribute('lon') ?? '');
+          if (id != null && lat != null && lon != null) {
+            nodes[id] = OsmPoint(lat, lon);
+            nodeTags[id] = _elementTags(element);
+          }
+        case 'way':
+          ways.add(element);
+      }
+    }
+
+    final features = <OsmFeature>[];
+    final places = <OsmPlace>[];
+    for (final entry in nodes.entries) {
+      final tags = nodeTags[entry.key]!;
+      if (tags['place'] == null) continue;
+      places.add(
+        OsmPlace(tags: tags, lat: entry.value.lat, lon: entry.value.lon),
+      );
+    }
+
+    for (final way in ways) {
+      final geometry = <OsmPoint>[];
+      for (final nd in way.childElements) {
+        if (nd.name.local != 'nd') continue;
+        final ref = int.tryParse(nd.getAttribute('ref') ?? '');
+        final point = ref == null ? null : nodes[ref];
+        if (point != null) geometry.add(point);
+      }
+      if (geometry.length < 2) continue;
+      features.add(
+        OsmFeature(
+          id: int.tryParse(way.getAttribute('id') ?? '') ?? 0,
+          tags: _elementTags(way),
+          geometry: geometry,
+        ),
+      );
+    }
+
+    if (features.isEmpty && places.isEmpty) {
+      return const OsmData(warning: 'OSM не вернул объектов в районе трека');
+    }
+    return OsmData(features: features, places: places);
+  }
+
+  static Map<String, String> _elementTags(XmlElement element) {
+    final tags = <String, String>{};
+    for (final tag in element.childElements) {
+      if (tag.name.local != 'tag') continue;
+      final key = tag.getAttribute('k');
+      final value = tag.getAttribute('v');
+      if (key != null && value != null) tags[key] = value;
+    }
+    return tags;
+  }
+}
+
+/// OSM-провайдер с резервом: Overpass, затем OSM API.
+class FallbackOsmProvider implements OsmProvider {
+  FallbackOsmProvider({required this.primary, required this.fallback});
+
+  final OsmProvider primary;
+  final OsmProvider fallback;
+
+  @override
+  Future<OsmData> fetch({required List<TrackSamplePoint> points}) async {
+    OsmData? primaryData;
+    Object? primaryError;
+    try {
+      primaryData = await primary.fetch(points: points);
+    } catch (error) {
+      primaryError = error;
+    }
+
+    if (primaryData != null &&
+        (primaryData.features.isNotEmpty || primaryData.places.isNotEmpty)) {
+      return primaryData;
+    }
+
+    try {
+      final data = await fallback.fetch(points: points);
+      if (data.features.isNotEmpty || data.places.isNotEmpty) return data;
+      // Оба источника пусты: показываем предупреждение основного.
+      return primaryData ?? data;
+    } catch (error) {
+      if (primaryData != null) return primaryData;
+      throw OsmException('OSM недоступен: $primaryError; $error');
+    }
+  }
+}
+
+/// Границы трека с запасом 0,02°.
+class _Bounds {
+  const _Bounds({
+    required this.minLat,
+    required this.maxLat,
+    required this.minLon,
+    required this.maxLon,
+  });
+
+  final double minLat;
+  final double maxLat;
+  final double minLon;
+  final double maxLon;
+
+  /// Overpass ждёт `south,west,north,east`.
+  String get overpass =>
+      '${minLat.toStringAsFixed(5)},${minLon.toStringAsFixed(5)},'
+      '${maxLat.toStringAsFixed(5)},${maxLon.toStringAsFixed(5)}';
+
+  /// OSM API ждёт `left,bottom,right,top`, то есть `lon,lat`.
+  String get osmApi =>
+      '${minLon.toStringAsFixed(5)},${minLat.toStringAsFixed(5)},'
+      '${maxLon.toStringAsFixed(5)},${maxLat.toStringAsFixed(5)}';
+
+  double get areaDeg2 => (maxLat - minLat) * (maxLon - minLon);
+}
+
+_Bounds _boundsOf(List<TrackSamplePoint> points) {
+  var minLat = points.first.lat;
+  var maxLat = points.first.lat;
+  var minLon = points.first.lon;
+  var maxLon = points.first.lon;
+  for (final point in points) {
+    minLat = math.min(minLat, point.lat);
+    maxLat = math.max(maxLat, point.lat);
+    minLon = math.min(minLon, point.lon);
+    maxLon = math.max(maxLon, point.lon);
+  }
+  const margin = 0.02;
+  return _Bounds(
+    minLat: minLat - margin,
+    maxLat: maxLat + margin,
+    minLon: minLon - margin,
+    maxLon: maxLon + margin,
+  );
 }
 
 /// Результат классификации OSM.
