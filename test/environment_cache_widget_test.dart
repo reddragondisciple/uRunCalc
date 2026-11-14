@@ -211,7 +211,7 @@ void main() {
     SharedPreferences.setMockInitialValues({
       'app_mode_v1': 'simple',
       'ultra_state_v1': jsonEncode(_state()),
-      'environment_cache_v2': _cacheJson(),
+      'environment_cache_v3': _cacheJson(),
     });
 
     debugTrackFileStoreOverride = _MemoryTrackStore({

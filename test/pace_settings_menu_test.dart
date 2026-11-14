@@ -35,6 +35,7 @@ PaceSettingsActions _actions({
   VoidCallback? onSurface,
   VoidCallback? onWeather,
   VoidCallback? onShoes,
+  VoidCallback? onFactors,
 }) {
   return PaceSettingsActions(
     onColumns: () async {},
@@ -50,6 +51,9 @@ PaceSettingsActions _actions({
     },
     onShoes: () async {
       onShoes?.call();
+    },
+    onFactors: () async {
+      onFactors?.call();
     },
   );
 }
@@ -119,5 +123,20 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('pace-settings-shoes')));
     await tester.pumpAndSettle();
     expect(shoes, isTrue);
+  });
+
+  testWidgets('coefficient editor opens from the gear menu', (tester) async {
+    var factors = false;
+    await _pumpMenu(
+      tester,
+      state: state,
+      actions: _actions(onFactors: () => factors = true),
+    );
+
+    expect(find.text(AppStrings.paceSettingsFactors), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pace-settings-factors')));
+    await tester.pumpAndSettle();
+
+    expect(factors, isTrue);
   });
 }

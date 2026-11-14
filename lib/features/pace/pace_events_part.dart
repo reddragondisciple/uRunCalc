@@ -432,8 +432,30 @@ extension _PaceEventsPart on _PaceViewState {
         onSurface: _showSurfaceDialog,
         onWeather: _showWeatherDialog,
         onShoes: _showShoesDialog,
+        onFactors: _showFactorProfileEditor,
       ),
     );
+  }
+
+  /// Полный редактор коэффициентов. После сохранения профиль применяется
+  /// сразу: старые данные окружения посчитаны по прежним коэффициентам,
+  /// поэтому кэш трека удаляется и расчёт повторяется.
+  Future<void> _showFactorProfileEditor() async {
+    _hideKeyboard();
+    final profile = _factorProfile ??= await FactorProfileStore().load();
+    if (!mounted) return;
+    final updated = await Navigator.of(context).push<FactorProfile>(
+      MaterialPageRoute(builder: (_) => FactorProfileScreen(profile: profile)),
+    );
+    if (!mounted || updated == null) return;
+
+    await FactorProfileStore().save(updated);
+    if (!mounted) return;
+    _factorProfile = updated;
+    await _environmentCache.remove(_currentTrackKey());
+    if (!mounted) return;
+    _update(() => _environmentReady = false, persist: false);
+    unawaited(_refreshEnvironment());
   }
 
   /// Покрытие, влажность, болота и броды считаются автоматически по треку.
@@ -614,7 +636,8 @@ extension _PaceEventsPart on _PaceViewState {
 
   /// Кроссовки: один глобальный множитель на всю таблицу.
   Future<void> _showShoesDialog() async {
-    var shoe = _environment.shoe;
+    // Если модель ещё не выбрана, по умолчанию считаем трейловые.
+    var shoe = _environment.shoe ?? ShoeKind.trail;
 
     final result = await showDialog<({bool disabled, ShoeKind? shoe})>(
       context: context,
@@ -632,7 +655,10 @@ extension _PaceEventsPart on _PaceViewState {
                     const SizedBox(height: 8),
                     RadioGroup<ShoeKind>(
                       groupValue: shoe,
-                      onChanged: (value) => setDialogState(() => shoe = value),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setDialogState(() => shoe = value);
+                      },
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -666,12 +692,10 @@ extension _PaceEventsPart on _PaceViewState {
                   ),
                 FilledButton(
                   key: const ValueKey('environment-shoes-apply'),
-                  onPressed: shoe == null
-                      ? null
-                      : () => Navigator.pop(dialogContext, (
-                          disabled: false,
-                          shoe: shoe,
-                        )),
+                  onPressed: () => Navigator.pop(dialogContext, (
+                    disabled: false,
+                    shoe: shoe,
+                  )),
                   child: const Text(AppStrings.apply),
                 ),
               ],
@@ -925,7 +949,7 @@ extension _PaceEventsPart on _PaceViewState {
   String _shoeLabel(ShoeKind kind) => switch (kind) {
     ShoeKind.road => AppStrings.shoeRoad,
     ShoeKind.trail => AppStrings.shoeTrail,
-    ShoeKind.minimal => AppStrings.shoeMinimal,
+    ShoeKind.spikes => AppStrings.shoeSpikes,
   };
 
   Future<void> _showColumnsDialog() async {
@@ -991,31 +1015,13 @@ extension _PaceEventsPart on _PaceViewState {
     });
   }
 
-  /// Строка состояния окружения: загрузка, покрытие OSM и предупреждения.
-  /// Без включённых галочек места не занимает.
-  Widget _buildEnvironmentStatus() {
-    if (!_environment.anyEnabled) return const SizedBox.shrink();
-    if (_environmentLoading) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Row(
-          children: [
-            const SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              AppStrings.environmentLoading,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
+  /// Текст состояния окружения для верхней панели. Начинается с
+  /// «обновлено чч:мм»; для вчерашних данных добавляется дата.
+  /// Без включённых галочек и без результата возвращает `null`.
+  String? _environmentStatusText() {
+    if (!_environment.anyEnabled) return null;
     final data = _environmentData;
-    if (data == null) return const SizedBox.shrink();
+    if (data == null) return null;
 
     final parts = <String>[
       if (_environment.surfaceEnabled)
@@ -1034,15 +1040,25 @@ extension _PaceEventsPart on _PaceViewState {
         ),
       if (data.warning != null) data.warning!,
     ];
-    if (parts.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        parts.join(' · '),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-      ),
+
+    final updated = data.updatedAt?.toLocal();
+    final prefix = updated == null ? null : _environmentUpdatedLabel(updated);
+    if (parts.isEmpty) return prefix;
+    if (prefix == null) return parts.join(' · ');
+    return '$prefix · ${parts.join(' · ')}';
+  }
+
+  String _environmentUpdatedLabel(DateTime updated) {
+    final now = DateTime.now();
+    final sameDay =
+        updated.year == now.year &&
+        updated.month == now.month &&
+        updated.day == now.day;
+    return AppStrings.environmentUpdatedLabel(
+      updated.hour,
+      updated.minute,
+      day: sameDay ? null : updated.day,
+      month: sameDay ? null : updated.month,
     );
   }
 

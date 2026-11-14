@@ -17,7 +17,7 @@ class EnvironmentCacheStore {
     this.maxEntries = 12,
   });
 
-  static const String defaultStorageKey = 'environment_cache_v2';
+  static const String defaultStorageKey = 'environment_cache_v3';
   static const int _schemaVersion = 1;
 
   final String storageKey;
@@ -65,6 +65,13 @@ class EnvironmentCacheStore {
       entries.remove(oldestKey);
     }
     await _flush();
+  }
+
+  /// Удаляет одну запись. Нужно после правки коэффициентов: старый результат
+  /// посчитан по прежнему профилю.
+  Future<void> remove(String trackKey) async {
+    await ensureLoaded();
+    if (_entries!.remove(trackKey) != null) await _flush();
   }
 
   /// Полная очистка — например, для тестов или будущей настройки.

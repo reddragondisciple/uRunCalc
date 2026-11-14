@@ -105,6 +105,12 @@ class PaceSettingsMenu {
               checked: state.shoesEnabled,
               choice: PaceSettingsChoice.shoes,
             ),
+            SimpleDialogOption(
+              key: const ValueKey('pace-settings-factors'),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, PaceSettingsChoice.factors),
+              child: const Text(AppStrings.paceSettingsFactors),
+            ),
             const Divider(),
             SimpleDialogOption(
               key: const ValueKey('pace-settings-export-tcx'),
@@ -137,6 +143,8 @@ class PaceSettingsMenu {
         await actions.onWeather();
       case PaceSettingsChoice.shoes:
         await actions.onShoes();
+      case PaceSettingsChoice.factors:
+        await actions.onFactors();
     }
   }
 
@@ -172,6 +180,7 @@ enum PaceSettingsChoice {
   surface,
   weather,
   shoes,
+  factors,
 }
 
 /// Состояние, которое меню показывает.
@@ -204,6 +213,7 @@ class PaceSettingsActions {
     required this.onSurface,
     required this.onWeather,
     required this.onShoes,
+    required this.onFactors,
   });
 
   final Future<void> Function() onColumns;
@@ -214,4 +224,5 @@ class PaceSettingsActions {
   final Future<void> Function() onSurface;
   final Future<void> Function() onWeather;
   final Future<void> Function() onShoes;
+  final Future<void> Function() onFactors;
 }

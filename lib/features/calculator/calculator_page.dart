@@ -12,6 +12,7 @@ import '../../core/rational.dart';
 import '../../core/value_format.dart';
 import '../../widgets/lazy_indexed_stack.dart';
 import '../info/info_view.dart';
+import '../pace/environment_status.dart';
 import '../pace/pace_view.dart';
 import '../simple/expression_view.dart';
 import '../time/time_view.dart';
@@ -69,6 +70,10 @@ class _CalculatorPageState extends State<CalculatorPage>
   bool _modeRestored = false;
   bool _modeTouched = false;
 
+  /// Строка «обновлено …» под кнопкой режима. Обновляет активный PaceView.
+  final EnvironmentStatusController _environmentStatus =
+      EnvironmentStatusController();
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +124,7 @@ class _CalculatorPageState extends State<CalculatorPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _flashTimer?.cancel();
+    _environmentStatus.dispose();
     super.dispose();
   }
 
@@ -199,10 +205,12 @@ class _CalculatorPageState extends State<CalculatorPage>
                     PaceView(
                       active: _mode == CalculatorMode.ultra,
                       surface: PaceSurface.ultra,
+                      statusController: _environmentStatus,
                     ),
                     PaceView(
                       active: _mode == CalculatorMode.pace,
                       surface: PaceSurface.pace,
+                      statusController: _environmentStatus,
                     ),
                     const TimeView(),
                     _buildExpressionMode(),
@@ -220,10 +228,15 @@ class _CalculatorPageState extends State<CalculatorPage>
   Widget _buildModeBar() {
     return CalculatorModeBar(
       current: _mode,
+      environmentStatus: _environmentStatus,
       onSelected: (mode) {
         setState(() {
           _mode = mode;
         });
+        // В режимах без таблицы Pace статус не относится к экрану.
+        if (mode != CalculatorMode.ultra && mode != CalculatorMode.pace) {
+          _environmentStatus.clear();
+        }
         _modeTouched = true;
         _rememberMode();
       },

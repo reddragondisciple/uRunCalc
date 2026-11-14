@@ -71,6 +71,7 @@ void main() {
         minutes: '03',
         seconds: '04',
         splitDistance: '0.5',
+        splitPercent: '-3.5',
         startHours: '06',
         startMinutes: '30',
       );

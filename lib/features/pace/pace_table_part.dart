@@ -936,6 +936,10 @@ extension _PaceTablePart on _PaceViewState {
       _clearActive();
       return;
     }
+    if (key == AppStrings.signToggleKey) {
+      _toggleSplitSign();
+      return;
+    }
 
     for (final char in key.split('')) {
       _appendActive(char);

@@ -286,6 +286,8 @@ extension _PaceInputPart on _PaceViewState {
           );
         case _PaceTopField.splitDistance:
           _splitDistance = _appendDecimal(_splitDistance, char, maxDecimals: 3);
+        case _PaceTopField.splitPercent:
+          _splitPercent = _appendSplitPercent(_splitPercent, char);
         case _PaceTopField.startHours:
           _startHours = _appendInteger(_startHours, char, 2);
         case _PaceTopField.startMinutes:
@@ -297,6 +299,17 @@ extension _PaceInputPart on _PaceViewState {
   String _appendInteger(String current, String char, int maxLength) {
     if (!_isDigitChar(char) || current.length >= maxLength) return current;
     return '$current$char';
+  }
+
+  /// Ввод процента сплита. Знак хранится отдельно и не мешает точке.
+  String _appendSplitPercent(String current, String char) {
+    final negative = current.startsWith('-');
+    final body = _appendDecimal(
+      negative ? current.substring(1) : current,
+      char,
+      maxDecimals: 1,
+    );
+    return negative ? '-$body' : body;
   }
 
   String _appendDecimal(String current, String char, {int maxDecimals = 2}) {
@@ -376,6 +389,8 @@ extension _PaceInputPart on _PaceViewState {
               _setTopTimeValue(field, _removeLast(_topTimeValue(field)));
             case _PaceTopField.splitDistance:
               _splitDistance = _removeLast(_splitDistance);
+            case _PaceTopField.splitPercent:
+              _splitPercent = _removeLast(_splitPercent);
             case _PaceTopField.startHours:
               _startHours = _removeLast(_startHours);
             case _PaceTopField.startMinutes:
@@ -438,6 +453,8 @@ extension _PaceInputPart on _PaceViewState {
               _setTopTimeValue(field, '');
             case _PaceTopField.splitDistance:
               _splitDistance = '';
+            case _PaceTopField.splitPercent:
+              _splitPercent = '';
             case _PaceTopField.startHours:
               _startHours = '';
             case _PaceTopField.startMinutes:
@@ -466,6 +483,22 @@ extension _PaceInputPart on _PaceViewState {
         case _PaceFocusKind.summaryPlannedTime:
           _plannedTimeOverride = '';
           _plannedSummarySource = PacePlannedSummarySource.none;
+      }
+    });
+  }
+
+  /// `±` меняет полярность только в поле сплита. В остальных полях минус
+  /// не поддерживается.
+  void _toggleSplitSign() {
+    if (_focus.kind != _PaceFocusKind.top ||
+        _focus.field != _PaceTopField.splitPercent) {
+      return;
+    }
+    _update(() {
+      if (_splitPercent.startsWith('-')) {
+        _splitPercent = _splitPercent.substring(1);
+      } else {
+        _splitPercent = '-$_splitPercent';
       }
     });
   }

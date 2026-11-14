@@ -359,6 +359,19 @@ extension _PaceCalculatorPart on _PaceViewState {
                     ),
             ),
             const SizedBox(width: 8),
+            // Сплит: положительный — быстрый старт, отрицательный — финиш.
+            SizedBox(
+              width: 58,
+              child: _field(
+                key: 'pace-split-percent',
+                text: _splitPercentText(),
+                editable: true,
+                focused: _isTopFocused(_PaceTopField.splitPercent),
+                onTap: () => _focusTop(_PaceTopField.splitPercent),
+                hint: AppStrings.paceSplitPercentHint,
+              ),
+            ),
+            const SizedBox(width: 6),
             OutlinedButton.icon(
               key: const ValueKey('pace-split-print'),
               onPressed: _showSplitPrintDialog,
@@ -411,6 +424,7 @@ extension _PaceCalculatorPart on _PaceViewState {
       splitKm: split,
       paceSeconds: pace,
       startSeconds: _startTimeMinutes * 60,
+      splitPercent: _splitPercentValue ?? 0,
     );
     if (points.isEmpty) return null;
 
@@ -419,6 +433,7 @@ extension _PaceCalculatorPart on _PaceViewState {
       pace: pace,
       time: time,
       split: split,
+      splitPercent: _splitPercentValue ?? 0,
       points: points,
     );
   }
@@ -551,6 +566,8 @@ extension _PaceCalculatorPart on _PaceViewState {
         '${AppStrings.paceCalcSplit}: '
             '${PaceTableCalculator.formatDistanceValue(data.split)} '
             '${AppStrings.paceHintKm}',
+        '${AppStrings.paceSplitPercentPrint}: '
+            '${AppStrings.formatSplitPercent(data.splitPercent)}',
       ],
       points: [
         for (var index = 0; index < data.points.length; index++)
@@ -647,6 +664,7 @@ class _SplitTableData {
     required this.pace,
     required this.time,
     required this.split,
+    required this.splitPercent,
     required this.points,
   });
 
@@ -654,6 +672,7 @@ class _SplitTableData {
   final int pace;
   final int time;
   final double split;
+  final double splitPercent;
   final List<PaceSplitPoint> points;
 
   String labelAt(int index) {

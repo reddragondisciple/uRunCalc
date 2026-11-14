@@ -28,6 +28,8 @@ import 'elevation_cell_text.dart';
 import 'elevation_chart_view.dart';
 import 'environment_cache.dart';
 import 'environment_data.dart';
+import 'environment_status.dart';
+import 'factor_profile_screen.dart';
 import 'environment_service.dart';
 import 'factor_profile.dart';
 import 'mountain_data.dart';
@@ -66,6 +68,7 @@ enum _PaceTopField {
   minutes,
   seconds,
   splitDistance,
+  splitPercent,
   startHours,
   startMinutes,
 }
@@ -152,10 +155,18 @@ debugPaceStateLoaderOverride;
 EnvironmentService? debugEnvironmentServiceOverride;
 
 class PaceView extends StatefulWidget {
-  const PaceView({super.key, required this.active, required this.surface});
+  const PaceView({
+    super.key,
+    required this.active,
+    required this.surface,
+    this.statusController,
+  });
 
   final bool active;
   final PaceSurface surface;
+
+  /// Куда отдавать строку «обновлено …». `null` — статус не показывается.
+  final EnvironmentStatusController? statusController;
 
   @override
   State<PaceView> createState() => _PaceViewState();
@@ -192,6 +203,9 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
 
   /// Шаг равномерной раскладки, км. Пусто — таблица раскладки не строится.
   String _splitDistance = '';
+
+  /// Сплит в процентах: `+` — быстрый старт, `-` — быстрый финиш.
+  String _splitPercent = '';
 
   /// Время старта: часы и минуты. Пустые поля отображаются как 00:00.
   String _startHours = '';
@@ -392,6 +406,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
         if (planChanged) _persist();
       }
     }
+    if (widget.active) _scheduleEnvironmentStatusSync();
   }
 
   @override
@@ -424,6 +439,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           minutes: _minutes,
           seconds: _seconds,
           splitDistance: _splitDistance,
+          splitPercent: _splitPercent,
           startHours: _startHours,
           startMinutes: _startMinutes,
         ),
@@ -492,6 +508,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
     _minutes = state.minutes;
     _seconds = state.seconds;
     _splitDistance = state.splitDistance;
+    _splitPercent = state.splitPercent;
     _startHours = state.startHours;
     _startMinutes = state.startMinutes;
   }
@@ -512,8 +529,32 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   /// `_buildTable`, чтобы не разбирать время для каждой клетки отдельно.
   List<PlanTimeStatus> _planStatuses = const <PlanTimeStatus>[];
 
+  /// Синхронизирует верхнюю панель после кадра: уведомление слушателей
+  /// внутри build запрещено.
+  void _scheduleEnvironmentStatusSync() {
+    final controller = widget.statusController;
+    if (controller == null || !widget.active) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.active) return;
+      _syncEnvironmentStatus(controller);
+    });
+  }
+
+  void _syncEnvironmentStatus(EnvironmentStatusController controller) {
+    if (!_environment.anyEnabled) {
+      controller.clear();
+      return;
+    }
+    if (_environmentLoading) {
+      controller.update(text: null, loading: true);
+      return;
+    }
+    controller.update(text: _environmentStatusText(), loading: false);
+  }
+
   @override
   Widget build(BuildContext context) {
+    _scheduleEnvironmentStatusSync();
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
 
@@ -613,7 +654,6 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildTableToolbar(),
-                  _buildEnvironmentStatus(),
                   const SizedBox(height: 8),
                   _buildTable(compact: false),
                 ],

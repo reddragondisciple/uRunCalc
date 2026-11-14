@@ -134,7 +134,7 @@ void main() {
           wetness: Wetness.saturated,
           profile: profile,
         ),
-        1.00,
+        closeTo(1.10, 0.001),
       );
     });
   });
@@ -318,6 +318,20 @@ void main() {
       expect(restored.version, 2);
       expect(restored.dryBelow, 0.25);
       expect(restored.snow.maxDepthM, 1.00);
+    });
+
+    test('reads the old minimal shoe key as spikes', () {
+      final json = profile.toJson();
+      final shoes = Map<String, dynamic>.from(json['shoes'] as Map);
+      shoes['minimal'] = shoes.remove('spikes');
+      json['shoes'] = shoes;
+
+      final restored = FactorProfile.tryFromJson(json);
+
+      expect(
+        restored.shoes[ShoeKind.spikes]![ShoeSurfaceClass.saturated],
+        1.20,
+      );
     });
   });
 }

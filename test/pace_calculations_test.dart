@@ -144,6 +144,46 @@ void main() {
       expect(points, hasLength(PaceTableCalculator.maxSplitRows));
     });
 
+    test('positive split starts faster and keeps the finish time', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 10,
+        splitKm: 5,
+        paceSeconds: 300,
+        splitPercent: 10,
+      );
+
+      // На половине дистанции накоплено меньше среднего времени.
+      expect(points.first.seconds, 1463);
+      expect(points.last.seconds, 3000);
+    });
+
+    test('negative split finishes faster than the average pace', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 10,
+        splitKm: 5,
+        paceSeconds: 300,
+        splitPercent: -10,
+      );
+
+      expect(points.first.seconds, closeTo(1538, 1));
+      expect(points.last.seconds, 3000);
+    });
+
+    test('clamps the split to plus or minus fifty percent', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 4,
+        splitKm: 2,
+        paceSeconds: 300,
+        splitPercent: -500,
+      );
+
+      expect(
+        points.first.seconds,
+        (4 * 300 * PaceTableCalculator.splitFraction(0.5, -50)).round(),
+      );
+      expect(points.last.seconds, 1200);
+    });
+
     test('formats durations without wrapping at midnight', () {
       expect(PaceTableCalculator.formatDurationSeconds(0), '0:00:00');
       expect(PaceTableCalculator.formatDurationSeconds(385), '0:06:25');

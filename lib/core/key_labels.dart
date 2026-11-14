@@ -21,6 +21,7 @@ String semanticKeyLabel(String key) {
     '÷' => AppStrings.keyDivide,
     '×' => AppStrings.keyMultiply,
     '%' => AppStrings.keyPercent,
+    '±' => AppStrings.keySignToggle,
     '=' => AppStrings.keyEquals,
     '(' => AppStrings.keyOpenParen,
     ')' => AppStrings.keyCloseParen,

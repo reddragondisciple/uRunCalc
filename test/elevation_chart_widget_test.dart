@@ -82,7 +82,9 @@ EnvironmentData _environment() {
         type: SurfaceType.asphalt,
         wetness: Wetness.dry,
         confidence: 1,
-        factor: 1.0,
+        factor: 1.1,
+        surfaceFactor: 1.0,
+        heatFactor: 1.1,
       ),
       SurfaceRun(
         startM: 5000,
@@ -90,7 +92,9 @@ EnvironmentData _environment() {
         type: SurfaceType.dirt,
         wetness: Wetness.saturated,
         confidence: 1,
-        factor: 1.5,
+        factor: 1.65,
+        surfaceFactor: 1.5,
+        heatFactor: 1.1,
       ),
       SurfaceRun(
         startM: 15000,
@@ -100,7 +104,9 @@ EnvironmentData _environment() {
         confidence: 1,
         isBog: true,
         bogKind: 'bog',
-        factor: 1.8,
+        factor: 1.98,
+        surfaceFactor: 1.8,
+        heatFactor: 1.1,
       ),
     ],
     fords: const [
@@ -373,8 +379,80 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Асфальт 25%'), findsOneWidget);
-      expect(find.text('Грунт 50%'), findsOneWidget);
-      expect(find.text('Грязь 25%'), findsOneWidget);
+      expect(find.text('Грунт 50% (+25%)'), findsOneWidget);
+      expect(find.text('Грязь 25% (+20%)'), findsOneWidget);
+    });
+
+    testWidgets('погодная строка показывает добавленное время и процент', (
+      tester,
+    ) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      expect(
+        find.text(
+          AppStrings.elevationChartWeather(time: '+0:12', percent: '+10%'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('открытый сегмент показывает только своё покрытие и погоду', (
+      tester,
+    ) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      final canvas = find.byKey(const ValueKey('elevation-chart-canvas'));
+      final p =
+          tester.getTopLeft(canvas) +
+          Offset(tester.getSize(canvas).width * 0.25, 40);
+      await tester.tapAt(p);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(p);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Асфальт 50%'), findsOneWidget);
+      expect(find.text('Грунт 50% (+25%)'), findsOneWidget);
+      expect(find.textContaining('Грязь'), findsNothing);
+      expect(
+        find.text(
+          AppStrings.elevationChartWeather(time: '+0:06', percent: '+10%'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('свайп влево перелистывает на следующий сегмент', (
+      tester,
+    ) async {
+      await _pumpHost(
+        tester,
+        size: portrait,
+        data: _data(environment: _environment()),
+      );
+
+      final canvas = find.byKey(const ValueKey('elevation-chart-canvas'));
+      final p =
+          tester.getTopLeft(canvas) +
+          Offset(tester.getSize(canvas).width * 0.25, 40);
+      await tester.tapAt(p);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(p);
+      await tester.pumpAndSettle();
+
+      await tester.fling(canvas, const Offset(-300, 0), 1000);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Грунт 50% (+25%)'), findsOneWidget);
+      expect(find.text('Грязь 50% (+40%)'), findsOneWidget);
+      expect(find.textContaining('Асфальт'), findsNothing);
     });
 
     testWidgets('без окружения расшифровки покрытия нет', (tester) async {

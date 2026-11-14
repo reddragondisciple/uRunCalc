@@ -173,4 +173,30 @@ void main() {
     );
     expect(find.text(AppStrings.environmentNoForecastHint), findsNothing);
   });
+
+  testWidgets('кроссовки по умолчанию трейловые и применяются без модели', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    debugTrackFileStoreOverride = _MemoryTrackStore({
+      _key('GRUT', 'T100'): File('test/fixtures/hill.gpx').readAsStringSync(),
+    });
+
+    await _pumpApp(tester, _state(startLocal: _localNoonAfter(2)));
+    await _switchMode(tester, 'Ultra');
+    await tester.tap(find.byKey(const ValueKey('pace-settings-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-settings-shoes')));
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.environmentShoesTitle), findsOneWidget);
+    expect(find.text(AppStrings.shoeTrail), findsOneWidget);
+    final apply = find.byKey(const ValueKey('environment-shoes-apply'));
+    expect(tester.widget<FilledButton>(apply).onPressed, isNotNull);
+
+    await tester.tap(apply);
+    await tester.pumpAndSettle();
+
+    expect(find.text(AppStrings.environmentShoesTitle), findsNothing);
+  });
 }

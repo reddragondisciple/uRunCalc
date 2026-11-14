@@ -103,6 +103,63 @@ void main() {
     expect(cleared, 1);
   });
 
+  testWidgets('pace keyboard puts ± between 0 and 00', (tester) async {
+    final keys = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: PaceKeyboard(
+              compact: false,
+              tableLayout: false,
+              isUltra: false,
+              onKey: keys.add,
+              onClear: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final zero = find.byKey(const ValueKey('pace-key-0'));
+    final sign = find.byKey(const ValueKey('pace-key-±'));
+    final doubleZero = find.byKey(const ValueKey('pace-key-00'));
+    expect(zero, findsOneWidget);
+    expect(sign, findsOneWidget);
+    expect(doubleZero, findsOneWidget);
+    expect(tester.getCenter(zero).dx, lessThan(tester.getCenter(sign).dx));
+    expect(
+      tester.getCenter(sign).dx,
+      lessThan(tester.getCenter(doubleZero).dx),
+    );
+
+    await tester.tap(sign);
+    expect(keys, ['±']);
+  });
+
+  testWidgets('ultra keyboard keeps OK instead of ±', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 200,
+            child: PaceKeyboard(
+              compact: false,
+              tableLayout: false,
+              isUltra: true,
+              onKey: (_) {},
+              onClear: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('pace-key-±')), findsNothing);
+    expect(find.byKey(const ValueKey('pace-key-ОК')), findsOneWidget);
+  });
+
   testWidgets('interactive cell shows text and handles taps', (tester) async {
     var taps = 0;
     final anchor = GlobalKey();

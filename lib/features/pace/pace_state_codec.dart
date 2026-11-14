@@ -14,6 +14,7 @@ class PaceCalculatorState {
     this.minutes = '',
     this.seconds = '',
     this.splitDistance = '',
+    this.splitPercent = '',
     this.startHours = '',
     this.startMinutes = '',
   });
@@ -32,6 +33,7 @@ class PaceCalculatorState {
       minutes: _readString(data['minutes']),
       seconds: _readString(data['seconds']),
       splitDistance: _readString(data['splitDistance']),
+      splitPercent: _readString(data['splitPercent']),
       startHours: _readString(data['startHours']),
       startMinutes: _readString(data['startMinutes']),
     );
@@ -49,6 +51,9 @@ class PaceCalculatorState {
   /// Шаг равномерной раскладки в километрах.
   final String splitDistance;
 
+  /// Позитивный/негативный сплит в процентах. Может начинаться с `-`.
+  final String splitPercent;
+
   /// Часы и минуты времени старта. Пустые строки означают 00:00.
   final String startHours;
   final String startMinutes;
@@ -64,6 +69,7 @@ class PaceCalculatorState {
       'minutes': minutes,
       'seconds': seconds,
       'splitDistance': splitDistance,
+      'splitPercent': splitPercent,
       'startHours': startHours,
       'startMinutes': startMinutes,
     };

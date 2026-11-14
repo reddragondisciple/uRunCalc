@@ -281,7 +281,7 @@ class FactorProfile {
           ShoeSurfaceClass.snowDeep: 1.20,
           ShoeSurfaceClass.ford: 1.02,
         },
-        ShoeKind.minimal: {
+        ShoeKind.spikes: {
           ShoeSurfaceClass.dryAsphalt: 1.01,
           ShoeSurfaceClass.wetAsphalt: 1.05,
           ShoeSurfaceClass.dryDirt: 1.02,
@@ -367,8 +367,7 @@ class FactorProfile {
     return {
       'version': version,
       'surface': {
-        for (final entry in surface.entries)
-          _surfaceKey(entry.key): entry.value,
+        for (final entry in surface.entries) surfaceKey(entry.key): entry.value,
       },
       'wetness': {
         for (final entry in wetness.entries) entry.key.name: entry.value,
@@ -545,7 +544,9 @@ class FactorProfile {
     );
   }
 
-  static String _surfaceKey(SurfaceType type) => switch (type) {
+  /// Ключ типа покрытия в JSON профиля. Публичный: редактор коэффициентов
+  /// строит по нему адреса полей.
+  static String surfaceKey(SurfaceType type) => switch (type) {
     SurfaceType.pavingStones => 'paving_stones',
     SurfaceType.snowPacked => 'snow_packed',
     SurfaceType.snowDeep => 'snow_deep',
@@ -554,7 +555,7 @@ class FactorProfile {
 
   static SurfaceType? _surfaceFromKey(String key) {
     for (final type in SurfaceType.values) {
-      if (_surfaceKey(type) == key || type.name == key) return type;
+      if (surfaceKey(type) == key || type.name == key) return type;
     }
     return null;
   }
@@ -616,7 +617,9 @@ class FactorProfile {
     };
     if (raw is! Map) return result;
     for (final shoe in ShoeKind.values) {
-      final section = raw[shoe.name];
+      // Старое имя `minimal` теперь `spikes`: читаем оба ключа.
+      final section =
+          raw[shoe.name] ?? (shoe == ShoeKind.spikes ? raw['minimal'] : null);
       if (section is! Map) continue;
       final target = result.putIfAbsent(
         shoe,

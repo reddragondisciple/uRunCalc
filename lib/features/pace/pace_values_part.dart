@@ -7,6 +7,20 @@ extension _PaceValuesPart on _PaceViewState {
 
   double? get _splitDistanceValue => parseDecimal(_splitDistance);
 
+  /// Сплит в процентах. Пустое поле — 0%.
+  double? get _splitPercentValue {
+    final raw = _splitPercent.trim().replaceAll(',', '.');
+    if (raw.isEmpty || raw == '-' || raw == '+') return 0;
+    return double.tryParse(raw);
+  }
+
+  /// Поле показывает знак: `+5`, `-3`, пустое — подсказку.
+  String _splitPercentText() {
+    if (_splitPercent.isEmpty) return '';
+    if (_splitPercent.startsWith('-')) return _splitPercent;
+    return '+$_splitPercent';
+  }
+
   /// Время старта в минутах от полуночи. Пустые поля означают 00:00.
   int get _startTimeMinutes =>
       (int.tryParse(_startHours.trim()) ?? 0) * 60 +
@@ -79,6 +93,7 @@ extension _PaceValuesPart on _PaceViewState {
   bool _isTopEditable(_PaceTopField field) {
     final isSplitField =
         field == _PaceTopField.splitDistance ||
+        field == _PaceTopField.splitPercent ||
         field == _PaceTopField.startHours ||
         field == _PaceTopField.startMinutes;
     return switch (_calc) {

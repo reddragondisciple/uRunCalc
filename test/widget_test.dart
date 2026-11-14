@@ -1391,6 +1391,55 @@ void main() {
     },
   );
 
+  testWidgets('pace split percent changes checkpoint times', (tester) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '10');
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+    await enterPaceValue(tester, 'pace-split', '5');
+
+    expect(find.text('0:30:00'), findsOneWidget);
+
+    await tapField(tester, find.byKey(const ValueKey('pace-split-percent')));
+    await tapPaceKey(tester, '±');
+    await tapPaceKey(tester, '1');
+    await tapPaceKey(tester, '0');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-split-percent')),
+        matching: find.text('-10'),
+      ),
+      findsOneWidget,
+    );
+    // Негативный сплит: половина дистанции пройдена медленнее среднего,
+    // но финиш остаётся прежним.
+    expect(find.text('0:30:45'), findsOneWidget);
+    expect(find.text('1:00:00'), findsWidgets);
+  });
+
+  testWidgets('sign key does not put a minus into other fields', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '10');
+    await tapPaceKey(tester, '±');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('10'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('-10'), findsNothing);
+  });
+
   testWidgets('pace split row shows the achieved categories', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);

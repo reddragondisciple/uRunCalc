@@ -115,16 +115,35 @@ class PaceTableCalculator {
   /// «100 км с шагом 0.001 км».
   static const int maxSplitRows = 1000;
 
+  /// Допустимый сплит: ±50% относительно среднего темпа.
+  static const double maxSplitPercent = 50;
+
+  /// Накопленная доля времени на доле дистанции [fraction] при сплите
+  /// [splitPercent] (в процентах).
+  ///
+  /// Положительный сплит — быстрый старт и медленный финиш, отрицательный —
+  /// наоборот. На финише (`fraction = 1`) доля всегда равна 1: общее время
+  /// сохраняется, меняется только раскладка.
+  static double splitFraction(double fraction, double splitPercent) {
+    final p = (splitPercent.clamp(-maxSplitPercent, maxSplitPercent)) / 100.0;
+    final f = fraction.clamp(0.0, 1.0);
+    return f + (p / 2) * f * (f - 1);
+  }
+
   /// Строит контрольные точки через [splitKm] километров до [distanceKm].
   /// Время прибытия считается от [startSeconds] (время суток старта) плюс
   /// темп на пройденное расстояние. Точки, выходящие за дистанцию, не
   /// добавляются, а последняя точка всегда совпадает с финишем: при дробном
   /// расстоянии добавляется отдельный финишный пункт.
+  ///
+  /// [splitPercent] задаёт позитивный/негативный сплит: `+5` — первые
+  /// километры быстрее среднего, последние медленнее.
   static List<PaceSplitPoint> splitPoints({
     required double distanceKm,
     required double splitKm,
     required int paceSeconds,
     int startSeconds = 0,
+    double splitPercent = 0,
     int maxPoints = maxSplitRows,
   }) {
     if (distanceKm <= 0 || splitKm <= 0 || paceSeconds <= 0) {
@@ -139,16 +158,19 @@ class PaceTableCalculator {
         ? rounded.toInt()
         : ratio.floor();
 
+    int timeAt(double checkpoint) {
+      final fraction = checkpoint / distanceKm;
+      final cumulative = splitFraction(fraction, splitPercent);
+      return startSeconds + (paceSeconds * distanceKm * cumulative).round();
+    }
+
     final points = <PaceSplitPoint>[];
     if (count > 0) {
       final limit = count > maxPoints ? maxPoints : count;
       for (var index = 0; index < limit; index++) {
         final checkpoint = splitKm * (index + 1);
         points.add(
-          PaceSplitPoint(
-            distanceKm: checkpoint,
-            seconds: startSeconds + (paceSeconds * checkpoint).round(),
-          ),
+          PaceSplitPoint(distanceKm: checkpoint, seconds: timeAt(checkpoint)),
         );
       }
     }
@@ -160,7 +182,7 @@ class PaceTableCalculator {
       points.add(
         PaceSplitPoint(
           distanceKm: distanceKm,
-          seconds: startSeconds + (paceSeconds * distanceKm).round(),
+          seconds: timeAt(distanceKm),
           isFinish: true,
         ),
       );

@@ -39,7 +39,15 @@ class PaceKeyboard extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(flex: 2, child: _padKey('0', compact)),
-                  Expanded(flex: 1, child: _padKey(extraKey, compact)),
+                  if (!isUltra) ...[
+                    // `±` меняет полярность только в поле сплита.
+                    Expanded(
+                      flex: 1,
+                      child: _padKey(AppStrings.signToggleKey, compact),
+                    ),
+                    Expanded(flex: 1, child: _padKey(extraKey, compact)),
+                  ] else
+                    Expanded(flex: 1, child: _padKey(extraKey, compact)),
                 ],
               ),
             ),
@@ -61,7 +69,14 @@ class PaceKeyboard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(flex: 2, child: _padKey('0', compact)),
-                Expanded(flex: 2, child: _padKey(extraKey, compact)),
+                if (!isUltra) ...[
+                  Expanded(
+                    flex: 1,
+                    child: _padKey(AppStrings.signToggleKey, compact),
+                  ),
+                  Expanded(flex: 1, child: _padKey(extraKey, compact)),
+                ] else
+                  Expanded(flex: 2, child: _padKey(extraKey, compact)),
               ],
             ),
           ),

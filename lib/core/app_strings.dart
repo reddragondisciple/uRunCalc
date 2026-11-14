@@ -98,6 +98,9 @@ class AppStrings {
   static const String paceHintPace = 'мин/км';
 
   static const String paceCalcSplit = 'Раскладка на';
+  static const String paceSplitPercent = 'Сплит, %';
+  static const String paceSplitPercentHint = '%';
+  static const String signToggleKey = '±';
   static const String paceCalcStartTime = 'Время старта';
   static const String paceDistancePresets = 'Готовые дистанции';
   static const String paceSplitTableDistance = 'Дистанция';
@@ -111,6 +114,18 @@ class AppStrings {
       'принтер или сохранить документ в PDF.';
   static const String paceSplitPrintStart = 'Старт';
   static const String paceSplitFinish = 'Финиш';
+  static const String paceSplitPercentPrint = 'Сплит';
+
+  /// Сплит в печати и интерфейсе: `+5%`, `-3%`, `0%`.
+  static String formatSplitPercent(double value) {
+    if (value == 0) return '0%';
+    final rounded = value.round();
+    if (rounded == 0) {
+      return '${value < 0 ? '-' : '+'}${value.abs().toStringAsFixed(1)}%';
+    }
+    return '${value < 0 ? '-' : '+'}${rounded.abs()}%';
+  }
+
   static const String paceNormativeMale = 'М';
   static const String paceNormativeFemale = 'Ж';
 
@@ -148,6 +163,7 @@ class AppStrings {
   static const String paceSettingsSurface = 'Покрытие';
   static const String paceSettingsWeather = 'Погода';
   static const String paceSettingsShoes = 'Кроссовки';
+  static const String paceSettingsFactors = 'Коэффициенты окружения';
 
   // Окружение: покрытие, погода, кроссовки.
   static const String environmentSurfaceTitle = 'Покрытие';
@@ -177,6 +193,19 @@ class AppStrings {
   static const String environmentLoading =
       'Считаем покрытие и погоду по треку…';
   static const String environmentRefresh = 'Обновить данные';
+  static String environmentUpdatedLabel(
+    int hour,
+    int minute, {
+    int? day,
+    int? month,
+  }) {
+    final time =
+        '${hour.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')}';
+    if (day == null || month == null) return 'обновлено $time';
+    return 'обновлено $day.${month.toString().padLeft(2, '0')} $time';
+  }
+
   static String environmentCoverage(int percent) => 'Покрытие OSM: $percent%';
 
   static String environmentCoverageWithRaster(
@@ -185,9 +214,9 @@ class AppStrings {
   ) => 'Покрытие OSM: $osmPercent%, растр: +$rasterPercent%';
   static String environmentWeatherRange(String temp, String apparent) =>
       'Погода: $temp °C, ощущается $apparent °C';
-  static const String shoeRoad = 'Дорожные';
-  static const String shoeTrail = 'Трейловые';
-  static const String shoeMinimal = 'Минималистичные';
+  static const String shoeRoad = 'Дорожные (плоские)';
+  static const String shoeTrail = 'Трейловые (протектор)';
+  static const String shoeSpikes = 'Трейловые с шипами';
 
   static const String elevationChartTitle = 'Карта высот';
   static const String elevationChartNoData = 'Нет данных о высоте';
@@ -207,6 +236,11 @@ class AppStrings {
     required String grade,
     String? surface,
   }) => '$km км · $ele м · $grade${surface == null ? '' : ' · $surface'}';
+
+  static String elevationChartWeather({
+    required String time,
+    required String percent,
+  }) => 'Погода: $time ($percent)';
 
   static String elevationChartSegment({
     required String ascent,
@@ -398,6 +432,7 @@ class AppStrings {
   static const String keyDivide = 'Разделить';
   static const String keyMultiply = 'Умножить';
   static const String keyPercent = 'Процент';
+  static const String keySignToggle = 'Плюс или минус';
   static const String keyEquals = 'Равно';
   static const String keyOpenParen = 'Открывающая скобка';
   static const String keyCloseParen = 'Закрывающая скобка';

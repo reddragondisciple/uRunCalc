@@ -296,6 +296,7 @@ class EnvironmentService {
           roadClass: run.roadClass,
           isFord: run.isFord,
           factor: factor,
+          surfaceFactor: surfacePart,
           heatFactor: heat,
           snowFactor: snow,
           shoeFactor: shoe,
@@ -328,6 +329,7 @@ class EnvironmentService {
       surfaceCoverage: surfaceResult.coverage,
       rasterCoverage: surfaceResult.rasterCoverage,
       hasForecast: hasWeatherBand,
+      updatedAt: DateTime.now().toUtc(),
       // Итерации времени прибытия могут повторить то же предупреждение.
       warning: warning.isEmpty ? null : warning.toSet().join('; '),
     );

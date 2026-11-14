@@ -140,7 +140,7 @@ ShoeSurfaceClass shoeSurfaceClass({
   }
 }
 
-/// Множитель обуви. Если обувь не выбрана — 1.00.
+/// Множитель обуви. Если модель не выбрана, считаем трейловые кроссовки.
 double shoeFactor({
   required ShoeKind? shoe,
   required SurfaceType surface,
@@ -148,13 +148,13 @@ double shoeFactor({
   required FactorProfile profile,
   bool isFord = false,
 }) {
-  if (shoe == null) return 1.0;
+  final kind = shoe ?? ShoeKind.trail;
   final surfaceClass = shoeSurfaceClass(
     surface: surface,
     wetness: wetness,
     isFord: isFord,
   );
-  return profile.shoes[shoe]?[surfaceClass] ?? 1.0;
+  return profile.shoes[kind]?[surfaceClass] ?? 1.0;
 }
 
 /// Множитель жары по `apparent_temperature`, §5.2.

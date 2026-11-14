@@ -63,34 +63,124 @@ String formatSurfacePercent(double percent) {
   return '${percent.round()}%';
 }
 
-/// Доля одного типа покрытия в длине трека.
+/// Доля одного типа покрытия в длине трека и добавленное им время.
 class SurfaceShare {
-  const SurfaceShare({required this.type, required this.percent});
+  const SurfaceShare({
+    required this.type,
+    required this.percent,
+    this.addedPercent = 0,
+  });
 
   final SurfaceType type;
   final double percent;
+
+  /// Сколько процентов к времени добавил этот тип покрытия (относительно
+  /// базового времени на этом отрезке).
+  final double addedPercent;
 }
 
 /// Доли типов покрытия по длине трека, от большей к меньшей.
 ///
 /// Считаем по длине участков, а не по числу точек: короткая плитка в городе
 /// не должна раздувать свой процент. Пустые участки пропускаем.
-List<SurfaceShare> surfaceShares(EnvironmentData? environment) {
+/// [fromKm] и [toKm] ограничивают окно: открытый сегмент показывает только
+/// своё покрытие.
+List<SurfaceShare> surfaceShares(
+  EnvironmentData? environment, {
+  double? fromKm,
+  double? toKm,
+}) {
   if (environment == null || environment.surface.isEmpty) return const [];
+  final fromM = (fromKm ?? double.negativeInfinity) * 1000;
+  final toM = (toKm ?? double.infinity) * 1000;
   final lengths = <SurfaceType, double>{};
+  final weightedFactors = <SurfaceType, double>{};
   var total = 0.0;
   for (final run in environment.surface) {
-    final length = run.endM - run.startM;
+    final start = math.max(run.startM, fromM);
+    final end = math.min(run.endM, toM);
+    final length = end - start;
     if (length <= 0) continue;
     lengths.update(run.type, (value) => value + length, ifAbsent: () => length);
+    weightedFactors.update(
+      run.type,
+      (value) => value + run.surfaceFactor * length,
+      ifAbsent: () => run.surfaceFactor * length,
+    );
     total += length;
   }
   if (total <= 0) return const [];
   final shares = [
     for (final entry in lengths.entries)
-      SurfaceShare(type: entry.key, percent: entry.value / total * 100),
+      SurfaceShare(
+        type: entry.key,
+        percent: entry.value / total * 100,
+        addedPercent:
+            ((weightedFactors[entry.key]! / entry.value) - 1) *
+            (entry.value / total) *
+            100,
+      ),
   ]..sort((a, b) => b.percent.compareTo(a.percent));
   return shares;
+}
+
+/// «+18%» или пустая строка, если вклад меньше половины процента.
+String formatAddedPercent(double percent) {
+  if (percent.abs() < 0.5) return '';
+  final sign = percent < 0 ? '-' : '+';
+  return '$sign${percent.abs().round()}%';
+}
+
+/// Вклад погоды в время на отрезке.
+class WeatherContribution {
+  const WeatherContribution({
+    required this.percent,
+    required this.addedSeconds,
+  });
+
+  final double percent;
+  final int addedSeconds;
+}
+
+/// Средний вклад погоды (жара × снег) на отрезке `[fromKm, toKm]`.
+///
+/// `null`, если погода выключена или на отрезке нет участков покрытия.
+WeatherContribution? weatherContribution(
+  EnvironmentData? environment, {
+  required double fromKm,
+  required double toKm,
+  required double flatPaceSecPerKm,
+}) {
+  if (environment == null || !environment.settings.weatherEnabled) return null;
+  if (toKm <= fromKm || flatPaceSecPerKm <= 0) return null;
+  final fromM = fromKm * 1000;
+  final toM = toKm * 1000;
+  var weighted = 0.0;
+  var covered = 0.0;
+  for (final run in environment.surface) {
+    final start = math.max(run.startM, fromM);
+    final end = math.min(run.endM, toM);
+    final length = end - start;
+    if (length <= 0) continue;
+    weighted += run.heatFactor * run.snowFactor * length;
+    covered += length;
+  }
+  if (covered <= 0) return null;
+  final factor = weighted / covered;
+  final baseSeconds = (toKm - fromKm) * flatPaceSecPerKm;
+  return WeatherContribution(
+    percent: (factor - 1) * 100,
+    addedSeconds: (baseSeconds * (factor - 1)).round(),
+  );
+}
+
+/// «+0:24» или «-0:05»: добавленное время в часах и минутах.
+String formatAddedDuration(int seconds) {
+  final sign = seconds < 0 ? '-' : '+';
+  final abs = seconds.abs();
+  final hours = abs ~/ 3600;
+  final minutes = (abs % 3600) ~/ 60;
+  return '$sign$hours:${minutes.toString().padLeft(2, '0')}';
 }
 
 /// Цвет линии покрытия на графике. Легенды нет, цвет только различает типы.
@@ -292,7 +382,7 @@ class ElevationProfilePainter extends CustomPainter {
         Offset(right, bottom - surfaceY),
         Paint()
           ..color = surfaceOverlayColor(run.type)
-          ..strokeWidth = 2.4,
+          ..strokeWidth = 4.8,
       );
     }
   }
@@ -428,6 +518,7 @@ class ElevationChartData {
     required this.totalDescentM,
     required this.boundariesKm,
     this.environment,
+    this.flatPaceSecPerKm = 360,
   });
 
   final List<ProfilePoint> profile;
@@ -441,6 +532,9 @@ class ElevationChartData {
 
   /// Покрытие, мокрость, болота, броды и погода. `null` — слои не рисуются.
   final EnvironmentData? environment;
+
+  /// Плоский темп для перевода процентов погоды в часы и минуты.
+  final double flatPaceSecPerKm;
 }
 
 /// Открывает карту: bottom sheet в портрете, полупрозрачный экран на весь
@@ -567,6 +661,43 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
     });
   }
 
+  /// Индекс открытого сегмента или `null`, если показан весь трек.
+  int? _currentSegmentIndex() {
+    final bounds = widget.data.boundariesKm;
+    if (bounds.length < 2) return null;
+    for (var i = 0; i + 1 < bounds.length; i++) {
+      if ((_fromKm - bounds[i]).abs() < 1e-6 &&
+          (_toKm - bounds[i + 1]).abs() < 1e-6) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  String _addedSuffix(double percent) {
+    final formatted = formatAddedPercent(percent);
+    return formatted.isEmpty ? '' : ' ($formatted)';
+  }
+
+  /// Листает сегменты. `direction = 1` — следующий (свайп влево).
+  void _pageSegment(int direction) {
+    final bounds = widget.data.boundariesKm;
+    if (bounds.length < 2) return;
+    final current = _currentSegmentIndex();
+    final int next;
+    if (current == null) {
+      next = direction > 0 ? 0 : bounds.length - 2;
+    } else {
+      next = current + direction;
+    }
+    if (next < 0 || next + 1 >= bounds.length) return;
+    setState(() {
+      _fromKm = bounds[next];
+      _toKm = bounds[next + 1];
+      _touchKm = null;
+    });
+  }
+
   double _kmAt(Offset local, double width) {
     final ratio = (local.dx / width).clamp(0.0, 1.0);
     return _fromKm + ratio * (_toKm - _fromKm);
@@ -584,7 +715,17 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
     final touchRun = touch == null
         ? null
         : data.environment?.runAt(touch.km * 1000);
-    final shares = surfaceShares(data.environment);
+    final shares = surfaceShares(
+      data.environment,
+      fromKm: _fromKm,
+      toKm: _toKm,
+    );
+    final weather = weatherContribution(
+      data.environment,
+      fromKm: _fromKm,
+      toKm: _toKm,
+      flatPaceSecPerKm: data.flatPaceSecPerKm,
+    );
 
     final content = Column(
       children: [
@@ -671,12 +812,30 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
                         const SizedBox(width: 4),
                         Text(
                           '${surfaceTypeLabel(share.type)} '
-                          '${formatSurfacePercent(share.percent)}',
+                          '${formatSurfacePercent(share.percent)}'
+                          '${_addedSuffix(share.addedPercent)}',
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
                     ),
                 ],
+              ),
+            ),
+          ),
+        if (weather != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                AppStrings.elevationChartWeather(
+                  time: formatAddedDuration(weather.addedSeconds),
+                  percent: formatAddedPercent(weather.percent).isEmpty
+                      ? '+0%'
+                      : formatAddedPercent(weather.percent),
+                ),
+                key: const ValueKey('elevation-chart-weather'),
+                style: theme.textTheme.bodySmall,
               ),
             ),
           ),
@@ -701,6 +860,14 @@ class _ElevationChartScaffoldState extends State<_ElevationChartScaffold> {
                           final km = _kmAt(d.localPosition, size.width);
                           setState(() => _touchKm = km);
                           _focusSegment(km);
+                        },
+                        onHorizontalDragEnd: (d) {
+                          final velocity = d.primaryVelocity ?? 0;
+                          if (velocity < -200) {
+                            _pageSegment(1);
+                          } else if (velocity > 200) {
+                            _pageSegment(-1);
+                          }
                         },
                         child: CustomPaint(
                           size: size,

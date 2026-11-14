@@ -27,8 +27,8 @@ enum SurfaceType {
 /// Состояние мокрости участка.
 enum Wetness { dry, damp, wet, saturated, bog }
 
-/// Тип обуви. `null` в настройках означает «не выбрано».
-enum ShoeKind { road, trail, minimal }
+/// Тип обуви. `null` в настройках означает «не выбрано» — считаем трейловые.
+enum ShoeKind { road, trail, spikes }
 
 /// Контекст населённого пункта для расчистки снега.
 enum SettlementContext { urban, town, village, rural }
@@ -144,6 +144,8 @@ class EnvironmentSettings {
 
   static ShoeKind? _readShoe(dynamic value) {
     if (value is! String) return null;
+    // Старое имя `minimal` теперь называется `spikes`.
+    if (value == 'minimal') return ShoeKind.spikes;
     for (final shoe in ShoeKind.values) {
       if (shoe.name == value) return shoe;
     }
@@ -221,6 +223,7 @@ class SurfaceRun {
     this.roadClass = RoadClass.unpaved,
     this.isFord = false,
     this.factor = 1.0,
+    this.surfaceFactor = 1.0,
     this.heatFactor = 1.0,
     this.snowFactor = 1.0,
     this.shoeFactor = 1.0,
@@ -246,6 +249,10 @@ class SurfaceRun {
 
   /// Итоговый множитель участка с учётом включённых галочек.
   final double factor;
+
+  /// Вклад только покрытия и мокрости (без погоды и обуви). Нужен легенде
+  /// карты высот, чтобы показать, сколько времени добавил тип покрытия.
+  final double surfaceFactor;
   final double heatFactor;
   final double snowFactor;
   final double shoeFactor;
@@ -313,6 +320,7 @@ class EnvironmentData {
     this.surfaceCoverage = 0,
     this.rasterCoverage = 0,
     this.hasForecast = false,
+    this.updatedAt,
     this.warning,
   });
 
@@ -331,6 +339,9 @@ class EnvironmentData {
 
   /// `false` — прогноза нет, погодную полосу не рисуем.
   final bool hasForecast;
+
+  /// Когда данные были посчитаны (UTC). Используется строкой «обновлено …».
+  final DateTime? updatedAt;
   final String? warning;
 
   /// Участок покрытия, содержащий [distanceM], или ближайший.
@@ -427,6 +438,7 @@ class EnvironmentData {
     'surfaceCoverage': surfaceCoverage,
     'rasterCoverage': rasterCoverage,
     'hasForecast': hasForecast,
+    if (updatedAt != null) 'updatedAtMs': updatedAt!.millisecondsSinceEpoch,
     if (warning != null) 'warning': warning,
   };
 
@@ -492,6 +504,7 @@ class EnvironmentData {
       surfaceCoverage: _readDouble(raw['surfaceCoverage']),
       rasterCoverage: _readDouble(raw['rasterCoverage']),
       hasForecast: raw['hasForecast'] == true,
+      updatedAt: _readDateTime(raw['updatedAtMs']),
       warning: raw['warning'] is String ? raw['warning'] as String : null,
     );
   }
@@ -567,6 +580,7 @@ class EnvironmentData {
     'roadClass': run.roadClass.name,
     'isFord': run.isFord,
     'factor': run.factor,
+    'surfaceFactor': run.surfaceFactor,
     'heatFactor': run.heatFactor,
     'snowFactor': run.snowFactor,
     'shoeFactor': run.shoeFactor,
@@ -595,6 +609,7 @@ class EnvironmentData {
           _readEnum(RoadClass.values, raw['roadClass']) ?? RoadClass.unpaved,
       isFord: raw['isFord'] == true,
       factor: _readDouble(raw['factor'], 1),
+      surfaceFactor: _readDouble(raw['surfaceFactor'], 1),
       heatFactor: _readDouble(raw['heatFactor'], 1),
       snowFactor: _readDouble(raw['snowFactor'], 1),
       shoeFactor: _readDouble(raw['shoeFactor'], 1),
@@ -657,6 +672,11 @@ class EnvironmentData {
 
   static int _readInt(dynamic value, [int fallback = 0]) =>
       value is num && value.isFinite ? value.round() : fallback;
+
+  static DateTime? _readDateTime(dynamic value) {
+    if (value is! num || !value.isFinite) return null;
+    return DateTime.fromMillisecondsSinceEpoch(value.round(), isUtc: true);
+  }
 
   static T? _readEnum<T extends Enum>(List<T> values, dynamic raw) {
     if (raw is! String) return null;

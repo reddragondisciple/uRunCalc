@@ -43,6 +43,11 @@ void main() {
         isFalse,
       );
       expect(EnvironmentSettings.tryFromJson({'shoe': 'unknown'}).shoe, isNull);
+      // Старое имя `minimal` читается как `spikes`.
+      expect(
+        EnvironmentSettings.tryFromJson({'shoe': 'minimal'}).shoe,
+        ShoeKind.spikes,
+      );
       expect(
         EnvironmentSettings.tryFromJson({'startUtcMs': 'now'}).startUtc,
         isNull,
@@ -59,12 +64,12 @@ void main() {
       final changed = settings.copyWith(
         weatherEnabled: true,
         groomedSnow: true,
-        shoe: ShoeKind.minimal,
+        shoe: ShoeKind.spikes,
       );
       expect(changed.surfaceEnabled, isTrue);
       expect(changed.weatherEnabled, isTrue);
       expect(changed.groomedSnow, isTrue);
-      expect(changed.shoe, ShoeKind.minimal);
+      expect(changed.shoe, ShoeKind.spikes);
       expect(changed.startUtc, DateTime.utc(2026, 7, 24));
 
       final cleared = changed.copyWith(clearStart: true, clearShoe: true);
@@ -88,6 +93,36 @@ void main() {
         ),
       ],
     );
+
+    test('restores surface factors and the update time', () {
+      final data = EnvironmentData(
+        settings: const EnvironmentSettings(surfaceEnabled: true),
+        surface: const [
+          SurfaceRun(
+            startM: 0,
+            endM: 1000,
+            type: SurfaceType.dirt,
+            wetness: Wetness.dry,
+            confidence: 1,
+            factor: 1.5,
+            surfaceFactor: 1.2,
+            heatFactor: 1.1,
+            snowFactor: 1.05,
+            shoeFactor: 1.15,
+          ),
+        ],
+        updatedAt: DateTime.utc(2026, 7, 24, 19, 3),
+      );
+
+      final restored = EnvironmentData.tryFromJson(data.toJson());
+
+      expect(restored, isNotNull);
+      expect(restored!.updatedAt, DateTime.utc(2026, 7, 24, 19, 3));
+      expect(restored.surface.single.surfaceFactor, 1.2);
+      expect(restored.surface.single.heatFactor, 1.1);
+      expect(restored.surface.single.snowFactor, 1.05);
+      expect(restored.surface.single.shoeFactor, 1.15);
+    });
 
     test('inside the covered track returns the run factor', () {
       final data = dataWithOneRun();
