@@ -141,8 +141,9 @@ extension _PaceGelsPart on _PaceViewState {
   Widget _buildGelStats() {
     final data = _splitTableData();
     if (data == null) return const SizedBox.shrink();
+    final counts = _gelCounts(data);
     final totals = _gelTotals(data);
-    if (totals.isEmpty) return const SizedBox.shrink();
+    if (counts.isEmpty && totals.isEmpty) return const SizedBox.shrink();
 
     return Container(
       key: const ValueKey('pace-gel-stats'),
@@ -153,26 +154,58 @@ extension _PaceGelsPart on _PaceViewState {
         border: Border.all(color: Colors.grey.shade800),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Wrap(
-        spacing: 14,
-        runSpacing: 4,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '${AppStrings.paceGelStats}:',
-            style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-          ),
-          for (final total in totals)
-            Text(
-              '${total.label} ${formatGelAmount(total.amount)} ${total.unit}',
-              style: const TextStyle(color: AppColors.result, fontSize: 12),
+          if (counts.isNotEmpty)
+            Wrap(
+              spacing: 14,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${AppStrings.paceGelCounts}:',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                for (final count in counts)
+                  Text(
+                    '${count.name} ${count.count} ${AppStrings.paceGelPieces}',
+                    key: ValueKey('pace-gel-count-${count.token}'),
+                    style: const TextStyle(
+                      color: AppColors.result,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          if (counts.isNotEmpty && totals.isNotEmpty) const SizedBox(height: 4),
+          if (totals.isNotEmpty)
+            Wrap(
+              spacing: 14,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${AppStrings.paceGelStats}:',
+                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                ),
+                for (final total in totals)
+                  Text(
+                    '${total.label} ${formatGelAmount(total.amount)} ${total.unit}',
+                    style: const TextStyle(
+                      color: AppColors.result,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
             ),
         ],
       ),
     );
   }
 
-  List<GelNutrientValue> _gelTotals(_SplitTableData data) {
+  /// Токены гелей и питания всех строк: ручной выбор или автогель.
+  List<String> _gelTokensFor(_SplitTableData data) {
     final autoRows = _autoGelRowsFor(data);
     final tokens = <String>[];
     for (var index = 0; index < data.points.length; index++) {
@@ -184,7 +217,15 @@ extension _PaceGelsPart on _PaceViewState {
         tokens.add(PaceGelTokens.simple);
       }
     }
-    return _gelSettings.totals(tokens);
+    return tokens;
+  }
+
+  List<GelNutrientValue> _gelTotals(_SplitTableData data) {
+    return _gelSettings.totals(_gelTokensFor(data));
+  }
+
+  List<GelCount> _gelCounts(_SplitTableData data) {
+    return _gelSettings.countGels(_gelTokensFor(data));
   }
 
   Set<int> _autoGelRowsFor(_SplitTableData data) {
@@ -315,6 +356,13 @@ extension _PaceGelsPart on _PaceViewState {
           '${formatGelAmount(km)} ${AppStrings.paceGelEveryKm}';
     }
     return null;
+  }
+
+  /// Количество гелей по видам для печати. `null` — гелей в таблице нет.
+  String? _gelCountsPrintLine(_SplitTableData data) {
+    final counts = _gelCounts(data);
+    if (counts.isEmpty) return null;
+    return '${AppStrings.paceGelCounts}: ${[for (final count in counts) '${count.name} ${count.count} ${AppStrings.paceGelPieces}'].join(' · ')}';
   }
 
   /// Строка статистики для печати. `null` — гелей в таблице нет.

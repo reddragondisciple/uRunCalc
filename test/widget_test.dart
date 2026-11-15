@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ultra_run_calc/core/app_strings.dart';
+import 'package:ultra_run_calc/features/pace/pace_split_print.dart';
 import 'package:ultra_run_calc/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1592,6 +1593,128 @@ void main() {
     expect(find.text('12 км'), findsOneWidget);
   });
 
+  testWidgets('pace modes share the same distance, pace and time', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '10');
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+
+    // Из темпа переключаемся на расстояние: вычисленные 6:00 должны
+    // сохраниться в полях темпа, а не потеряться.
+    await tester.tap(find.byKey(const ValueKey('pace-calc-distance')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-pace-min')),
+        matching: find.text('6'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-pace-sec')),
+        matching: find.text('00'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pace-calc-time')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('10'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-time-hours')),
+        matching: find.text('01'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-time-minutes')),
+        matching: find.text('00'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('pace-calc-pace')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('10'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-time-minutes')),
+        matching: find.text('60'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-pace-min')),
+        matching: find.text('6'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('marathon distances show their names in the distance field', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('pace-distance-presets')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-distance-presets')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('pace-distance-preset-42.195')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text(AppStrings.paceMarathon),
+      ),
+      findsOneWidget,
+    );
+
+    await tapField(tester, find.byKey(const ValueKey('pace-distance')));
+    await tapPaceKey(tester, AppStrings.reset);
+    for (final char in '21.097'.split('')) {
+      await tapPaceKey(tester, char);
+    }
+    await tapPaceKey(tester, AppStrings.ok);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text(AppStrings.paceHalfMarathon),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('pace split table works in time mode', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);
@@ -1689,6 +1812,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Углеводы 50 г'), findsOneWidget);
+    expect(find.text('гель 2 шт'), findsOneWidget);
 
     // Сначала очищаем километры, затем вводим минуты: одновременно
     // заполнено только одно поле. При темпе 6:00/км это 20, 40 и 60 минут.
@@ -1703,6 +1827,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Углеводы 75 г'), findsOneWidget);
+    expect(find.text('гель 3 шт'), findsOneWidget);
   });
 
   testWidgets('markers and food are selectable in the split table', (
@@ -1817,6 +1942,8 @@ void main() {
     );
     // Второй гель на 10-м километре остаётся обычным: 40 + 25.
     expect(find.text('Углеводы 65 г'), findsOneWidget);
+    expect(find.text('гель 1 шт'), findsOneWidget);
+    expect(find.text('Мой гель 1 шт'), findsOneWidget);
   });
 
   testWidgets('print button sits in the mode bar and only in Pace', (
@@ -1861,6 +1988,16 @@ void main() {
     expect(find.text(AppStrings.paceSplitPrintTitle), findsOneWidget);
     expect(find.text('PDF'), findsOneWidget);
     expect(find.text(AppStrings.cancel), findsOneWidget);
+    expect(find.text(AppStrings.paceSplitPrintTwoColumns), findsOneWidget);
+    expect(find.text(AppStrings.paceSplitPrintThreeColumns), findsOneWidget);
+
+    await tester.tap(find.text(AppStrings.paceSplitPrintThreeColumns));
+    await tester.pumpAndSettle();
+
+    final layout = tester.widget<SegmentedButton<PaceSplitPrintLayout>>(
+      find.byKey(const ValueKey('pace-print-layout')),
+    );
+    expect(layout.selected, {PaceSplitPrintLayout.threeColumns});
 
     await tester.tap(find.text(AppStrings.cancel));
     await tester.pumpAndSettle();

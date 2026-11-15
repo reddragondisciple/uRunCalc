@@ -34,6 +34,33 @@ void main() {
       expect(totals[2].amount, 200);
     });
 
+    test('counts gels by kind and keeps custom names', () {
+      final settings = const GelSettings().withCustomGel(
+        const CustomGel(
+          name: 'Мой',
+          nutrients: [
+            CustomGelNutrient(
+              id: 'carbs',
+              label: 'Углеводы',
+              unit: 'г',
+              amount: '40',
+            ),
+          ],
+        ),
+      );
+
+      final counts = settings.countGels([
+        PaceGelTokens.simple,
+        PaceGelTokens.coffee,
+        PaceGelTokens.simple,
+        '${PaceGelTokens.customPrefix}Мой',
+        PaceGelTokens.fruit,
+      ]);
+
+      expect(counts.map((value) => value.name), ['гель', 'кофегель', 'Мой']);
+      expect(counts.map((value) => value.count), [2, 1, 1]);
+    });
+
     test('custom gel nutrients participate in totals', () {
       final settings = const GelSettings().withCustomGel(
         const CustomGel(

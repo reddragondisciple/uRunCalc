@@ -177,6 +177,9 @@ extension _PaceCalculatorPart on _PaceViewState {
 
   Widget _buildDistanceRow() {
     final result = _calc == _PaceCalc.distance;
+    final text = _topDistance();
+    final named =
+        text == AppStrings.paceMarathon || text == AppStrings.paceHalfMarathon;
 
     return Row(
       children: [
@@ -190,7 +193,7 @@ extension _PaceCalculatorPart on _PaceViewState {
         Expanded(
           child: _field(
             key: 'pace-distance',
-            text: _topDistance(),
+            text: text,
             editable: !result,
             focused: _isTopFocused(_PaceTopField.distance),
             onTap: () => _focusTop(_PaceTopField.distance),
@@ -201,15 +204,17 @@ extension _PaceCalculatorPart on _PaceViewState {
           const SizedBox(width: 4),
           _distancePresetButton(),
         ],
-        const SizedBox(
+        SizedBox(
           width: 44,
-          child: Padding(
-            padding: EdgeInsets.only(left: 4),
-            child: Text(
-              AppStrings.paceHintKm,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ),
+          child: named
+              ? null
+              : const Padding(
+                  padding: EdgeInsets.only(left: 4),
+                  child: Text(
+                    AppStrings.paceHintKm,
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ),
         ),
       ],
     );
@@ -224,7 +229,8 @@ extension _PaceCalculatorPart on _PaceViewState {
       onSelected: (value) {
         _update(() {
           _distance = value;
-          _focus = const _PaceFocus.top(_PaceTopField.distance);
+          _focus = const _PaceFocus.none();
+          _keyboardVisible = false;
         });
       },
       itemBuilder: (context) => [
@@ -232,7 +238,11 @@ extension _PaceCalculatorPart on _PaceViewState {
           PopupMenuItem<String>(
             key: ValueKey('pace-distance-preset-$value'),
             value: value,
-            child: Text(value),
+            child: Text(switch (value) {
+              '42.195' => '$value — ${AppStrings.paceMarathon}',
+              '21.097' => '$value — ${AppStrings.paceHalfMarathon}',
+              _ => value,
+            }),
           ),
       ],
       child: Container(
@@ -494,39 +504,88 @@ extension _PaceCalculatorPart on _PaceViewState {
     final data = _splitTableData();
     if (data == null) return;
 
-    final share = await showDialog<bool>(
+    final choice = await showDialog<_SplitPrintChoice>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(AppStrings.paceSplitPrintTitle),
-          content: const Text(
-            AppStrings.paceSplitPrintDescription,
-            style: TextStyle(fontSize: 13, color: Colors.grey),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(AppStrings.cancel),
-            ),
-            OutlinedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('PDF'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text(AppStrings.pacePrintAction),
-            ),
-          ],
+        var layout = PaceSplitPrintLayout.twoColumns;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(AppStrings.paceSplitPrintTitle),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      AppStrings.paceSplitPrintDescription,
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      AppStrings.paceSplitPrintLayout,
+                      style: TextStyle(fontSize: 13, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 6),
+                    SegmentedButton<PaceSplitPrintLayout>(
+                      key: const ValueKey('pace-print-layout'),
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(
+                          value: PaceSplitPrintLayout.twoColumns,
+                          label: Text(AppStrings.paceSplitPrintTwoColumns),
+                        ),
+                        ButtonSegment(
+                          value: PaceSplitPrintLayout.threeColumns,
+                          label: Text(AppStrings.paceSplitPrintThreeColumns),
+                        ),
+                      ],
+                      selected: {layout},
+                      onSelectionChanged: (values) {
+                        setDialogState(() => layout = values.first);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text(AppStrings.cancel),
+                ),
+                OutlinedButton(
+                  key: const ValueKey('pace-print-pdf'),
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _SplitPrintChoice(share: true, layout: layout),
+                  ),
+                  child: const Text('PDF'),
+                ),
+                FilledButton(
+                  key: const ValueKey('pace-print-now'),
+                  onPressed: () => Navigator.pop(
+                    dialogContext,
+                    _SplitPrintChoice(share: false, layout: layout),
+                  ),
+                  child: const Text(AppStrings.pacePrintAction),
+                ),
+              ],
+            );
+          },
         );
       },
     );
-    if (!mounted || share == null) return;
+    if (!mounted || choice == null) return;
 
     try {
-      final bytes = await buildPaceSplitPdf(_buildSplitPrintData(data));
+      final bytes = await buildPaceSplitPdf(
+        _buildSplitPrintData(data),
+        layout: choice.layout,
+      );
       if (!mounted) return;
       final fileName = _splitPrintFileName();
-      if (share) {
+      if (choice.share) {
         await Printing.sharePdf(bytes: bytes, filename: fileName);
       } else {
         await Printing.layoutPdf(name: fileName, onLayout: (_) async => bytes);
@@ -575,6 +634,7 @@ extension _PaceCalculatorPart on _PaceViewState {
         splitLine,
         ?paceLine,
         ?_gelEveryPrintLine(),
+        ?_gelCountsPrintLine(data),
         ?_gelStatsPrintLine(data),
       ],
       points: [
@@ -665,6 +725,14 @@ extension _PaceCalculatorPart on _PaceViewState {
       ],
     );
   }
+}
+
+/// Выбранный макет и способ вывода печатной раскладки.
+class _SplitPrintChoice {
+  const _SplitPrintChoice({required this.share, required this.layout});
+
+  final bool share;
+  final PaceSplitPrintLayout layout;
 }
 
 /// Данные раскладки, общие для экранной таблицы и печати.

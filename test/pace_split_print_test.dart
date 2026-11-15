@@ -55,4 +55,20 @@ void main() {
 
     expect(RegExp(r'/Type\s*/Page\b').allMatches(text).length, greaterThan(1));
   });
+
+  test('three-column layout fits more rows on the first page', () async {
+    final twoColumns = String.fromCharCodes(await buildPaceSplitPdf(_data(60)));
+    expect(
+      RegExp(r'/Type\s*/Page\b').allMatches(twoColumns).length,
+      greaterThan(1),
+    );
+
+    final threeColumns = String.fromCharCodes(
+      await buildPaceSplitPdf(
+        _data(60),
+        layout: PaceSplitPrintLayout.threeColumns,
+      ),
+    );
+    expect(RegExp(r'/Type\s*/Page\b').allMatches(threeColumns), hasLength(1));
+  });
 }

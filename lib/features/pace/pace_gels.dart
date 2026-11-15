@@ -76,6 +76,19 @@ class GelNutrientValue {
   final double amount;
 }
 
+/// Количество гелей одного вида в раскладке.
+class GelCount {
+  const GelCount({
+    required this.token,
+    required this.name,
+    required this.count,
+  });
+
+  final String token;
+  final String name;
+  final int count;
+}
+
 /// Состав геля для отображения и подсчёта статистики.
 class GelProfile {
   const GelProfile({
@@ -322,6 +335,26 @@ class GelSettings {
     }
     for (final value in totals.values) {
       if (value.amount > 0) result.add(value);
+    }
+    return result;
+  }
+
+  /// Количество гелей каждого вида: автоматических и выбранных вручную.
+  /// Порядок совпадает со списком питания, свои гели идут после кофегеля.
+  List<GelCount> countGels(Iterable<String> tokens) {
+    final counts = <String, int>{};
+    for (final token in tokens) {
+      if (profileForToken(token) == null) continue;
+      counts[token] = (counts[token] ?? 0) + 1;
+    }
+    if (counts.isEmpty) return const [];
+
+    final result = <GelCount>[];
+    for (final option in PaceGelCatalog.rightOptions(this)) {
+      if (!PaceGelTokens.isGel(option.key)) continue;
+      final count = counts.remove(option.key);
+      if (count == null || count <= 0) continue;
+      result.add(GelCount(token: option.key, name: option.label, count: count));
     }
     return result;
   }

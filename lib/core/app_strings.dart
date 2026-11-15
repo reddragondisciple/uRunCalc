@@ -134,6 +134,8 @@ class AppStrings {
   static const String paceGelLeftHeader = 'Метки';
   static const String paceGelRightHeader = 'Питание';
   static const String paceGelStats = 'Итого по гелям';
+  static const String paceGelCounts = 'Гели';
+  static const String paceGelPieces = 'шт';
   static const String paceGelLeftTitle = 'Метки';
   static const String paceGelRightTitle = 'Питание';
   static const String paceGelEmpty = '—';
@@ -142,10 +144,16 @@ class AppStrings {
   static const String signToggleKey = '±';
   static const String paceCalcStartTime = 'Время старта';
   static const String paceDistancePresets = 'Готовые дистанции';
+  static const String paceMarathon = 'марафон';
+  static const String paceHalfMarathon = 'полумарафон';
   static const String paceSplitTableDistance = 'Дистанция';
+  static const String paceSplitTableDistanceShort = 'Км';
   static const String paceSplitTableTime = 'Время';
   static const String paceSplitPrintButton = 'Печать';
   static const String paceSplitPrintTitle = 'Печать раскладки';
+  static const String paceSplitPrintLayout = 'Макет';
+  static const String paceSplitPrintTwoColumns = 'Две колонки';
+  static const String paceSplitPrintThreeColumns = 'Три колонки';
   static const String paceSplitPrintDocumentTitle =
       'Раскладка по контрольным точкам';
   static const String paceSplitPrintDescription =

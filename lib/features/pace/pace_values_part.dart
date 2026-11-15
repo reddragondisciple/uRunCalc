@@ -115,6 +115,10 @@ extension _PaceValuesPart on _PaceViewState {
 
   void _selectCalc(_PaceCalc calc) {
     _update(() {
+      // Перед сменой режима сохраняем вычисленное значение в его поля:
+      // иначе переключение на другой режим теряет темп/расстояние/время
+      // и получаются три независимых расчёта.
+      _commitCalcResult(_calc);
       _calc = calc;
       _focus = switch (calc) {
         _PaceCalc.pace => const _PaceFocus.top(_PaceTopField.distance),
@@ -122,6 +126,45 @@ extension _PaceValuesPart on _PaceViewState {
         _PaceCalc.time => const _PaceFocus.top(_PaceTopField.distance),
       };
     });
+  }
+
+  /// Переносит вычисленное поле текущего режима в хранимые значения.
+  /// Совпадающее значение не перезаписывается: так сохраняется формат,
+  /// который ввёл пользователь (например, 60 минут вместо 1 часа).
+  void _commitCalcResult(_PaceCalc calc) {
+    switch (calc) {
+      case _PaceCalc.pace:
+        final pace = _computedPace;
+        if (pace == null || pace <= 0 || _paceValue == pace) return;
+        _paceMinutes = '${pace ~/ 60}';
+        _paceSeconds = '${pace % 60}'.padLeft(2, '0');
+      case _PaceCalc.distance:
+        final distance = _computedDistance;
+        final current = _distanceValue;
+        if (distance == null ||
+            distance <= 0 ||
+            (current != null && (current - distance).abs() < 1e-9)) {
+          return;
+        }
+        _distance = PaceTableCalculator.formatDistanceValue(distance);
+      case _PaceCalc.time:
+        final time = _computedTime;
+        if (time == null || time <= 0 || _timeValue == time) return;
+        final parts = splitSeconds(time);
+        _days = parts.days > 0 ? '${parts.days}' : '';
+        _hours = parts.hours > 0 ? '${parts.hours}' : '';
+        _minutes = parts.minutes > 0 ? '${parts.minutes}' : '';
+        _seconds = parts.seconds > 0 ? '${parts.seconds}' : '';
+    }
+  }
+
+  /// Подпись готовой дистанции: марафон или полумарафон.
+  String? _distancePresetLabel(String raw) {
+    final value = parseDecimal(raw);
+    if (value == null) return null;
+    if ((value - 42.195).abs() < 1e-9) return AppStrings.paceMarathon;
+    if ((value - 21.097).abs() < 1e-9) return AppStrings.paceHalfMarathon;
+    return null;
   }
 
   void _focusTop(_PaceTopField field) {
@@ -177,8 +220,14 @@ extension _PaceValuesPart on _PaceViewState {
   String _topDistance() {
     if (_calc == _PaceCalc.distance) {
       final distance = _computedDistance;
-      return distance == null ? '—' : distance.toStringAsFixed(2);
+      if (distance == null) return '—';
+      return _distancePresetLabel(
+            PaceTableCalculator.formatDistanceValue(distance),
+          ) ??
+          distance.toStringAsFixed(2);
     }
+    final label = _distancePresetLabel(_distance);
+    if (label != null && !_isTopFocused(_PaceTopField.distance)) return label;
     return _distance;
   }
 
