@@ -103,7 +103,9 @@ void main() {
     expect(cleared, 1);
   });
 
-  testWidgets('pace keyboard puts ± between 0 and 00', (tester) async {
+  testWidgets('pace keyboard confirms with OK and swaps reset with ±', (
+    tester,
+  ) async {
     final keys = <String>[];
     await tester.pumpWidget(
       MaterialApp(
@@ -124,18 +126,26 @@ void main() {
 
     final zero = find.byKey(const ValueKey('pace-key-0'));
     final sign = find.byKey(const ValueKey('pace-key-±'));
-    final doubleZero = find.byKey(const ValueKey('pace-key-00'));
+    final reset = find.byKey(const ValueKey('pace-key-Сброс'));
+    final ok = find.byKey(const ValueKey('pace-key-ОК'));
     expect(zero, findsOneWidget);
     expect(sign, findsOneWidget);
-    expect(doubleZero, findsOneWidget);
-    expect(tester.getCenter(zero).dx, lessThan(tester.getCenter(sign).dx));
+    expect(reset, findsOneWidget);
+    expect(ok, findsOneWidget);
+    expect(find.byKey(const ValueKey('pace-key-00')), findsNothing);
+
+    // ± стоит в ряду 7–8–9, «Сброс» — в нижнем ряду рядом с ОК.
     expect(
-      tester.getCenter(sign).dx,
-      lessThan(tester.getCenter(doubleZero).dx),
+      tester.getCenter(sign).dy,
+      tester.getCenter(find.byKey(const ValueKey('pace-key-9'))).dy,
     );
+    expect(tester.getCenter(reset).dy, tester.getCenter(zero).dy);
+    expect(tester.getCenter(zero).dx, lessThan(tester.getCenter(reset).dx));
+    expect(tester.getCenter(reset).dx, lessThan(tester.getCenter(ok).dx));
 
     await tester.tap(sign);
-    expect(keys, ['±']);
+    await tester.tap(reset);
+    expect(keys, ['±', 'Сброс']);
   });
 
   testWidgets('ultra keyboard keeps OK instead of ±', (tester) async {

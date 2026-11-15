@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_strings.dart';
 import '../pace/environment_status.dart';
+import '../pace/pace_split_print_controller.dart';
 import 'calculator_mode.dart';
 
 /// Кнопка выбора режима в левом верхнем углу и строка состояния окружения
@@ -12,6 +13,7 @@ class CalculatorModeBar extends StatelessWidget {
     required this.current,
     required this.onSelected,
     this.environmentStatus,
+    this.splitPrintController,
   });
 
   final CalculatorMode current;
@@ -20,6 +22,9 @@ class CalculatorModeBar extends StatelessWidget {
   /// Статус покрытия и погоды. `null` — места не занимает.
   final EnvironmentStatusController? environmentStatus;
 
+  /// Кнопка печати раскладки. `null` — кнопки нет.
+  final PaceSplitPrintController? splitPrintController;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -27,6 +32,7 @@ class CalculatorModeBar extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             PopupMenuButton<CalculatorMode>(
               key: const ValueKey('mode-button'),
@@ -123,6 +129,30 @@ class CalculatorModeBar extends StatelessWidget {
                 ),
               ),
             ],
+            if (splitPrintController != null)
+              AnimatedBuilder(
+                animation: splitPrintController!,
+                builder: (context, _) {
+                  if (!splitPrintController!.available) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: IconButton(
+                      key: const ValueKey('pace-split-print'),
+                      tooltip: AppStrings.paceSplitPrintButton,
+                      onPressed: () => splitPrintController!.print(),
+                      icon: const Icon(Icons.print, size: 20),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),

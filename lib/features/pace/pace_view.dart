@@ -36,6 +36,7 @@ import 'mountain_data.dart';
 import 'pace_calculations.dart';
 import 'pace_normatives.dart';
 import 'pace_split_print.dart';
+import 'pace_split_print_controller.dart';
 import 'pace_cells.dart';
 import 'pace_keyboard.dart';
 import 'pace_catalog.dart';
@@ -160,6 +161,7 @@ class PaceView extends StatefulWidget {
     required this.active,
     required this.surface,
     this.statusController,
+    this.splitPrintController,
   });
 
   final bool active;
@@ -167,6 +169,9 @@ class PaceView extends StatefulWidget {
 
   /// Куда отдавать строку «обновлено …». `null` — статус не показывается.
   final EnvironmentStatusController? statusController;
+
+  /// Кнопка печати раскладки в строке режимов. `null` — кнопки нет.
+  final PaceSplitPrintController? splitPrintController;
 
   @override
   State<PaceView> createState() => _PaceViewState();
@@ -404,6 +409,9 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
         _keyboardVisible = false;
         _focus = const _PaceFocus.none();
         if (planChanged) _persist();
+      } else {
+        _keyboardVisible = false;
+        _focus = const _PaceFocus.none();
       }
     }
     if (widget.active) _scheduleEnvironmentStatusSync();
@@ -412,6 +420,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.splitPrintController?.clear();
     _store.dispose();
     super.dispose();
   }
@@ -552,9 +561,30 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
     controller.update(text: _environmentStatusText(), loading: false);
   }
 
+  /// Кнопка печати живёт в строке режимов, поэтому её доступность нужно
+  /// передать туда после кадра.
+  void _scheduleSplitPrintSync() {
+    final controller = widget.splitPrintController;
+    if (controller == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!widget.active || _isUltra) {
+        controller.clear();
+        return;
+      }
+      controller.update(
+        available: _splitTableData() != null,
+        onPrint: _requestSplitPrint,
+      );
+    });
+  }
+
+  Future<void> _requestSplitPrint() => _showSplitPrintDialog();
+
   @override
   Widget build(BuildContext context) {
     _scheduleEnvironmentStatusSync();
+    _scheduleSplitPrintSync();
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
 
@@ -569,16 +599,17 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(child: calculator),
-            SizedBox(
-              width: 190,
-              child: PaceKeyboard(
-                compact: true,
-                tableLayout: false,
-                isUltra: _isUltra,
-                onKey: _onPadKey,
-                onClear: _clearActive,
+            if (_keyboardVisible)
+              SizedBox(
+                width: 190,
+                child: PaceKeyboard(
+                  compact: true,
+                  tableLayout: false,
+                  isUltra: _isUltra,
+                  onKey: _onPadKey,
+                  onClear: _clearActive,
+                ),
               ),
-            ),
           ],
         );
       }
@@ -586,13 +617,14 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
       return Column(
         children: [
           Expanded(child: calculator),
-          PaceKeyboard(
-            compact: false,
-            tableLayout: false,
-            isUltra: _isUltra,
-            onKey: _onPadKey,
-            onClear: _clearActive,
-          ),
+          if (_keyboardVisible)
+            PaceKeyboard(
+              compact: false,
+              tableLayout: false,
+              isUltra: _isUltra,
+              onKey: _onPadKey,
+              onClear: _clearActive,
+            ),
         ],
       );
     }

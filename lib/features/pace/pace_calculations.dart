@@ -22,6 +22,25 @@ class PaceSplitPoint {
   final bool isFinish;
 }
 
+/// Темп сплита для печати: первый сегмент, середина и последний целый
+/// сегмент. Значения — секунды на километр.
+class PaceSplitBreakdown {
+  const PaceSplitBreakdown({
+    required this.startPace,
+    required this.middlePace,
+    required this.finishPace,
+  });
+
+  /// Темп первого сегмента.
+  final int startPace;
+
+  /// Средний темп: на середине дистанции сплит переворачивается.
+  final int middlePace;
+
+  /// Темп последнего целого сегмента.
+  final int finishPace;
+}
+
 /// Чистые расчёты таблицы Pace/Ultra: разбор времени и темпа, дни,
 /// накопленное время, плановые показатели и подсветка.
 class PaceTableCalculator {
@@ -189,6 +208,56 @@ class PaceTableCalculator {
     }
 
     return points;
+  }
+
+  /// Темп первого, среднего и последнего целого сегмента для печати.
+  /// Средний темп — исходный равномерный: на середине дистанции сплит
+  /// переворачивается и равен нулю.
+  static PaceSplitBreakdown? splitBreakdown({
+    required List<PaceSplitPoint> points,
+    required double distanceKm,
+    required double splitKm,
+    required int paceSeconds,
+    int startSeconds = 0,
+  }) {
+    if (points.isEmpty || distanceKm <= 0 || splitKm <= 0 || paceSeconds <= 0) {
+      return null;
+    }
+
+    final first = points.first;
+    final firstElapsed = first.seconds - startSeconds;
+    final startPace = first.distanceKm > 0
+        ? (firstElapsed / first.distanceKm).round()
+        : paceSeconds;
+
+    // Последний целый сегмент — последняя точка без отдельного финиша.
+    // Если дистанция короче шага раскладки, остаётся только финиш.
+    final wholeIndex = points.lastIndexWhere((point) => !point.isFinish);
+    final lastIndex = wholeIndex >= 0 ? wholeIndex : points.length - 1;
+    final last = points[lastIndex];
+    final previousSeconds = lastIndex > 0
+        ? points[lastIndex - 1].seconds
+        : startSeconds;
+    final previousDistance = lastIndex > 0
+        ? points[lastIndex - 1].distanceKm
+        : 0.0;
+    final lastKm = last.distanceKm - previousDistance;
+    final finishPace = lastKm > 0
+        ? ((last.seconds - previousSeconds) / lastKm).round()
+        : paceSeconds;
+
+    return PaceSplitBreakdown(
+      startPace: startPace,
+      middlePace: paceSeconds,
+      finishPace: finishPace,
+    );
+  }
+
+  /// Знаковое отклонение темпа для печати: `+0:08`, `-0:08`, `0:00`.
+  static String formatPaceDelta(int seconds) {
+    if (seconds == 0) return '0:00';
+    final sign = seconds < 0 ? '-' : '+';
+    return '$sign${formatPaceSeconds(seconds.abs())}';
   }
 
   /// Подпись контрольной точки. Если шаг раскладки целый, показываем

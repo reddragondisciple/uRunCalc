@@ -444,6 +444,7 @@ void main() {
     expect(find.byKey(const ValueKey('pace-table-time-0')), findsNothing);
 
     // Дистанция 5 км, время 25 минут -> темп 5:00 на километр.
+    await tapField(tester, find.byKey(const ValueKey('pace-distance')));
     await tapPaceKey(tester, '5');
     await tapField(tester, find.byKey(const ValueKey('pace-time-minutes')));
     await tapPaceKey(tester, '2');
@@ -463,6 +464,35 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('pace keyboard appears on field tap and hides by OK', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    expect(find.byKey(const ValueKey('pace-key-1')), findsNothing);
+
+    await tapField(tester, find.byKey(const ValueKey('pace-distance')));
+    expect(find.byKey(const ValueKey('pace-key-1')), findsOneWidget);
+
+    await tapPaceKey(tester, '5');
+    await tapPaceKey(tester, 'ОК');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('pace-key-1')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-distance')),
+        matching: find.text('5'),
+      ),
+      findsOneWidget,
+    );
+
+    await tapField(tester, find.byKey(const ValueKey('pace-time-minutes')));
+    expect(find.byKey(const ValueKey('pace-key-1')), findsOneWidget);
   });
 
   testWidgets('pace table computes segment and overall pace', (tester) async {
@@ -977,6 +1007,8 @@ void main() {
     expect(find.text(AppStrings.paceCalcTime), findsWidgets);
     expect(find.text(AppStrings.paceHintPace), findsOneWidget);
     expect(find.text(AppStrings.paceHintKm), findsWidgets);
+
+    await tapField(tester, find.byKey(const ValueKey('pace-distance')));
     expect(
       find.byKey(ValueKey('pace-key-${AppStrings.reset}')),
       findsOneWidget,
@@ -1277,6 +1309,7 @@ void main() {
     await pumpCalculator(tester);
     await switchMode(tester, 'Pace');
 
+    await tapField(tester, find.byKey(const ValueKey('pace-distance')));
     await tapPaceKey(tester, '5');
     await tapField(tester, find.byKey(const ValueKey('pace-time-minutes')));
     await tapPaceKey(tester, '2');
@@ -1391,6 +1424,31 @@ void main() {
     },
   );
 
+  testWidgets('pace split field is labelled and always shows the percent', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '10');
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+    await enterPaceValue(tester, 'pace-split', '1');
+
+    expect(find.text('Сплит'), findsOneWidget);
+
+    await tapField(tester, find.byKey(const ValueKey('pace-split-percent')));
+    await tapPaceKey(tester, '3');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('pace-split-percent')),
+        matching: find.text('+3%'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('pace split percent changes checkpoint times', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);
@@ -1410,7 +1468,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('pace-split-percent')),
-        matching: find.text('-10'),
+        matching: find.text('-10%'),
       ),
       findsOneWidget,
     );
@@ -1450,8 +1508,10 @@ void main() {
     await enterPaceValue(tester, 'pace-time-minutes', '35');
     await enterPaceValue(tester, 'pace-split', '5');
 
+    expect(find.text('Сплит'), findsOneWidget);
     expect(find.text('М — I'), findsOneWidget);
     expect(find.text('Ж — МС'), findsOneWidget);
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('pace-split-print')), findsOneWidget);
   });
 
@@ -1506,6 +1566,32 @@ void main() {
     expect(find.text('0:50:00'), findsOneWidget);
   });
 
+  testWidgets('print button sits in the mode bar and only in Pace', (
+    tester,
+  ) async {
+    usePhoneSize(tester);
+    await pumpCalculator(tester);
+    await switchMode(tester, 'Pace');
+
+    await enterPaceValue(tester, 'pace-distance', '5');
+    await enterPaceValue(tester, 'pace-time-minutes', '60');
+    await enterPaceValue(tester, 'pace-split', '1');
+    await tester.pumpAndSettle();
+
+    final print = find.byKey(const ValueKey('pace-split-print'));
+    expect(print, findsOneWidget);
+    expect(
+      tester.getCenter(print).dy,
+      lessThan(
+        tester.getCenter(find.byKey(const ValueKey('pace-distance'))).dy,
+      ),
+    );
+
+    await switchMode(tester, 'Ultra');
+
+    expect(find.byKey(const ValueKey('pace-split-print')), findsNothing);
+  });
+
   testWidgets('pace split print button opens the print dialog', (tester) async {
     usePhoneSize(tester);
     await pumpCalculator(tester);
@@ -1514,9 +1600,8 @@ void main() {
     await enterPaceValue(tester, 'pace-distance', '5');
     await enterPaceValue(tester, 'pace-time-minutes', '60');
     await enterPaceValue(tester, 'pace-split', '1');
-
-    await tester.ensureVisible(find.byKey(const ValueKey('pace-split-print')));
     await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const ValueKey('pace-split-print')));
     await tester.pumpAndSettle();
 

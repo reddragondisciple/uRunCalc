@@ -23,7 +23,9 @@ class PaceKeyboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final extraKey = isUltra ? AppStrings.ok : '00';
+    // In Pace `±` и «Сброс» меняются местами, а на месте `00` — подтверждение.
+    final signOrReset = isUltra ? AppStrings.reset : AppStrings.signToggleKey;
+
     if (tableLayout) {
       return Container(
         height: compact ? null : 180,
@@ -31,7 +33,7 @@ class PaceKeyboard extends StatelessWidget {
         color: AppColors.surface,
         child: Column(
           children: [
-            _keyRow(['.', AppStrings.reset, '⌫'], compact),
+            _keyRow(['.', signOrReset, '⌫'], compact),
             _keyRow(['1', '2', '3'], compact),
             _keyRow(['4', '5', '6'], compact),
             _keyRow(['7', '8', '9'], compact),
@@ -39,15 +41,12 @@ class PaceKeyboard extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(flex: 2, child: _padKey('0', compact)),
-                  if (!isUltra) ...[
-                    // `±` меняет полярность только в поле сплита.
+                  if (!isUltra)
                     Expanded(
                       flex: 1,
-                      child: _padKey(AppStrings.signToggleKey, compact),
+                      child: _padKey(AppStrings.reset, compact),
                     ),
-                    Expanded(flex: 1, child: _padKey(extraKey, compact)),
-                  ] else
-                    Expanded(flex: 1, child: _padKey(extraKey, compact)),
+                  Expanded(flex: 1, child: _padKey(AppStrings.ok, compact)),
                 ],
               ),
             ),
@@ -64,19 +63,16 @@ class PaceKeyboard extends StatelessWidget {
         children: [
           _keyRow(['1', '2', '3', '⌫'], compact),
           _keyRow(['4', '5', '6', '.'], compact),
-          _keyRow(['7', '8', '9', AppStrings.reset], compact),
+          _keyRow(['7', '8', '9', signOrReset], compact),
           Expanded(
             child: Row(
               children: [
                 Expanded(flex: 2, child: _padKey('0', compact)),
                 if (!isUltra) ...[
-                  Expanded(
-                    flex: 1,
-                    child: _padKey(AppStrings.signToggleKey, compact),
-                  ),
-                  Expanded(flex: 1, child: _padKey(extraKey, compact)),
+                  Expanded(flex: 1, child: _padKey(AppStrings.reset, compact)),
+                  Expanded(flex: 1, child: _padKey(AppStrings.ok, compact)),
                 ] else
-                  Expanded(flex: 2, child: _padKey(extraKey, compact)),
+                  Expanded(flex: 2, child: _padKey(AppStrings.ok, compact)),
               ],
             ),
           ),

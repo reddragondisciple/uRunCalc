@@ -13,6 +13,7 @@ import '../../core/value_format.dart';
 import '../../widgets/lazy_indexed_stack.dart';
 import '../info/info_view.dart';
 import '../pace/environment_status.dart';
+import '../pace/pace_split_print_controller.dart';
 import '../pace/pace_view.dart';
 import '../simple/expression_view.dart';
 import '../time/time_view.dart';
@@ -74,6 +75,9 @@ class _CalculatorPageState extends State<CalculatorPage>
   final EnvironmentStatusController _environmentStatus =
       EnvironmentStatusController();
 
+  /// Кнопка печати раскладки в правом верхнем углу строки режимов.
+  final PaceSplitPrintController _splitPrint = PaceSplitPrintController();
+
   @override
   void initState() {
     super.initState();
@@ -125,6 +129,7 @@ class _CalculatorPageState extends State<CalculatorPage>
     WidgetsBinding.instance.removeObserver(this);
     _flashTimer?.cancel();
     _environmentStatus.dispose();
+    _splitPrint.dispose();
     super.dispose();
   }
 
@@ -211,6 +216,7 @@ class _CalculatorPageState extends State<CalculatorPage>
                       active: _mode == CalculatorMode.pace,
                       surface: PaceSurface.pace,
                       statusController: _environmentStatus,
+                      splitPrintController: _splitPrint,
                     ),
                     const TimeView(),
                     _buildExpressionMode(),
@@ -229,6 +235,7 @@ class _CalculatorPageState extends State<CalculatorPage>
     return CalculatorModeBar(
       current: _mode,
       environmentStatus: _environmentStatus,
+      splitPrintController: _splitPrint,
       onSelected: (mode) {
         setState(() {
           _mode = mode;
@@ -237,6 +244,8 @@ class _CalculatorPageState extends State<CalculatorPage>
         if (mode != CalculatorMode.ultra && mode != CalculatorMode.pace) {
           _environmentStatus.clear();
         }
+        // Печать раскладки есть только в Pace.
+        if (mode != CalculatorMode.pace) _splitPrint.clear();
         _modeTouched = true;
         _rememberMode();
       },

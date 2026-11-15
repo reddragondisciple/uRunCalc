@@ -349,6 +349,30 @@ extension _PaceCalculatorPart on _PaceViewState {
       children: [
         Row(
           children: [
+            // Сплит: положительный — быстрый старт, отрицательный — финиш.
+            Expanded(
+              child: Row(
+                children: [
+                  const Text(
+                    AppStrings.paceSplitPercentPrint,
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _field(
+                      key: 'pace-split-percent',
+                      text: _splitPercentText(),
+                      editable: true,
+                      focused: _isTopFocused(_PaceTopField.splitPercent),
+                      onTap: () => _focusTop(_PaceTopField.splitPercent),
+                      hint: AppStrings.paceSplitPercentHint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Разряды делят ряд со сплитом поровну.
             Expanded(
               child: normative.isEmpty
                   ? const SizedBox.shrink()
@@ -357,32 +381,6 @@ extension _PaceCalculatorPart on _PaceViewState {
                       alignment: Alignment.centerLeft,
                       child: Row(children: normative),
                     ),
-            ),
-            const SizedBox(width: 8),
-            // Сплит: положительный — быстрый старт, отрицательный — финиш.
-            SizedBox(
-              width: 58,
-              child: _field(
-                key: 'pace-split-percent',
-                text: _splitPercentText(),
-                editable: true,
-                focused: _isTopFocused(_PaceTopField.splitPercent),
-                onTap: () => _focusTop(_PaceTopField.splitPercent),
-                hint: AppStrings.paceSplitPercentHint,
-              ),
-            ),
-            const SizedBox(width: 6),
-            OutlinedButton.icon(
-              key: const ValueKey('pace-split-print'),
-              onPressed: _showSplitPrintDialog,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                minimumSize: const Size(0, 34),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              icon: const Icon(Icons.print, size: 16),
-              label: const Text(AppStrings.paceSplitPrintButton),
             ),
           ],
         ),
@@ -552,6 +550,26 @@ extension _PaceCalculatorPart on _PaceViewState {
   }
 
   PaceSplitPrintData _buildSplitPrintData(_SplitTableData data) {
+    final breakdown = PaceTableCalculator.splitBreakdown(
+      points: data.points,
+      distanceKm: data.distance,
+      splitKm: data.split,
+      paceSeconds: data.pace,
+      startSeconds: _startTimeMinutes * 60,
+    );
+    final percent = AppStrings.formatSplitPercent(
+      data.splitPercent.clamp(
+        -PaceTableCalculator.maxSplitPercent,
+        PaceTableCalculator.maxSplitPercent,
+      ),
+    );
+    final splitLine = '${AppStrings.paceSplitPercentPrint} $percent';
+    final paceLine = breakdown == null
+        ? null
+        : '(${PaceTableCalculator.formatPaceDelta(breakdown.startPace - data.pace)} '
+              '${formatPaceSeconds(breakdown.middlePace)} '
+              '${PaceTableCalculator.formatPaceDelta(breakdown.finishPace - data.pace)})';
+
     return PaceSplitPrintData(
       title: AppStrings.paceSplitPrintDocumentTitle,
       summary: [
@@ -566,8 +584,8 @@ extension _PaceCalculatorPart on _PaceViewState {
         '${AppStrings.paceCalcSplit}: '
             '${PaceTableCalculator.formatDistanceValue(data.split)} '
             '${AppStrings.paceHintKm}',
-        '${AppStrings.paceSplitPercentPrint}: '
-            '${AppStrings.formatSplitPercent(data.splitPercent)}',
+        splitLine,
+        ?paceLine,
       ],
       points: [
         for (var index = 0; index < data.points.length; index++)

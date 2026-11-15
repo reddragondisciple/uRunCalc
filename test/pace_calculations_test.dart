@@ -169,6 +169,56 @@ void main() {
       expect(points.last.seconds, 3000);
     });
 
+    test('describes the first, middle and last pace for print', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 10,
+        splitKm: 1,
+        paceSeconds: 360,
+        splitPercent: 5,
+      );
+      final breakdown = PaceTableCalculator.splitBreakdown(
+        points: points,
+        distanceKm: 10,
+        splitKm: 1,
+        paceSeconds: 360,
+      );
+
+      expect(breakdown, isNotNull);
+      // Первый километр на 8 с/км быстрее, последний — на 8 медленнее.
+      expect(breakdown!.startPace, 352);
+      expect(breakdown.middlePace, 360);
+      expect(breakdown.finishPace, 368);
+      expect(
+        PaceTableCalculator.formatPaceDelta(breakdown.startPace - 360),
+        '-0:08',
+      );
+      expect(
+        PaceTableCalculator.formatPaceDelta(breakdown.finishPace - 360),
+        '+0:08',
+      );
+      expect(PaceTableCalculator.formatPaceDelta(0), '0:00');
+    });
+
+    test('breakdown handles a fractional finish', () {
+      final points = PaceTableCalculator.splitPoints(
+        distanceKm: 2.4,
+        splitKm: 1,
+        paceSeconds: 300,
+      );
+      final breakdown = PaceTableCalculator.splitBreakdown(
+        points: points,
+        distanceKm: 2.4,
+        splitKm: 1,
+        paceSeconds: 300,
+      );
+
+      expect(breakdown, isNotNull);
+      expect(breakdown!.startPace, 300);
+      // Последний целый сегмент — 1–2 км, финишный огрызок не учитывается.
+      expect(breakdown.finishPace, 300);
+      expect(breakdown.middlePace, 300);
+    });
+
     test('clamps the split to plus or minus fifty percent', () {
       final points = PaceTableCalculator.splitPoints(
         distanceKm: 4,

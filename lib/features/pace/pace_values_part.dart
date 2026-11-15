@@ -14,11 +14,12 @@ extension _PaceValuesPart on _PaceViewState {
     return double.tryParse(raw);
   }
 
-  /// Поле показывает знак: `+5`, `-3`, пустое — подсказку.
+  /// Поле всегда показывает знак и `%`: `+5%`, `-3%`, пустое — подсказку.
   String _splitPercentText() {
     if (_splitPercent.isEmpty) return '';
-    if (_splitPercent.startsWith('-')) return _splitPercent;
-    return '+$_splitPercent';
+    final negative = _splitPercent.startsWith('-');
+    final body = negative ? _splitPercent.substring(1) : _splitPercent;
+    return '${negative ? '-' : '+'}$body%';
   }
 
   /// Время старта в минутах от полуночи. Пустые поля означают 00:00.
@@ -125,7 +126,9 @@ extension _PaceValuesPart on _PaceViewState {
     if (!_isTopEditable(field)) return;
     _update(() {
       _focus = _PaceFocus.top(field);
+      _keyboardVisible = true;
     });
+    _ensureFocusVisible();
   }
 
   String _topTimeValue(_PaceTopField field) {
