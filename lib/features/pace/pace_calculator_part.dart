@@ -33,9 +33,8 @@ extension _PaceCalculatorPart on _PaceViewState {
         const SizedBox(height: 4),
         _buildTimeRow(),
         const SizedBox(height: 4),
-        _buildSplitRow(),
-        const SizedBox(height: 4),
-        _buildStartTimeRow(),
+        _buildGelEveryRow(),
+        _buildGelStats(),
         const SizedBox(height: 8),
         _buildSplitSection(),
       ],
@@ -82,7 +81,7 @@ extension _PaceCalculatorPart on _PaceViewState {
     required String text,
     required bool editable,
     required bool focused,
-    required VoidCallback onTap,
+    required VoidCallback? onTap,
     String hint = '',
   }) {
     final borderColor = focused
@@ -253,79 +252,6 @@ extension _PaceCalculatorPart on _PaceViewState {
     );
   }
 
-  Widget _buildSplitRow() {
-    return Row(
-      children: [
-        const SizedBox(
-          width: 94,
-          child: Text(
-            AppStrings.paceCalcSplit,
-            style: TextStyle(color: Colors.grey, fontSize: 13),
-          ),
-        ),
-        Expanded(
-          child: _field(
-            key: 'pace-split',
-            text: _splitDistance,
-            editable: true,
-            focused: _isTopFocused(_PaceTopField.splitDistance),
-            onTap: () => _focusTop(_PaceTopField.splitDistance),
-            hint: AppStrings.paceHintKm,
-          ),
-        ),
-        const SizedBox(
-          width: 44,
-          child: Padding(
-            padding: EdgeInsets.only(left: 4),
-            child: Text(
-              AppStrings.paceHintKm,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStartTimeRow() {
-    return Row(
-      children: [
-        const SizedBox(
-          width: 94,
-          child: Text(
-            AppStrings.paceCalcStartTime,
-            style: TextStyle(color: Colors.grey, fontSize: 13),
-          ),
-        ),
-        Expanded(
-          child: _field(
-            key: 'pace-start-hours',
-            text: _startHours.isEmpty ? '00' : _startHours.padLeft(2, '0'),
-            editable: true,
-            focused: _isTopFocused(_PaceTopField.startHours),
-            onTap: () => _focusTop(_PaceTopField.startHours),
-            hint: '00',
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4),
-          child: Text(':', style: TextStyle(color: Colors.grey, fontSize: 18)),
-        ),
-        Expanded(
-          child: _field(
-            key: 'pace-start-minutes',
-            text: _startMinutes.isEmpty ? '00' : _startMinutes.padLeft(2, '0'),
-            editable: true,
-            focused: _isTopFocused(_PaceTopField.startMinutes),
-            onTap: () => _focusTop(_PaceTopField.startMinutes),
-            hint: '00',
-          ),
-        ),
-        const SizedBox(width: 44),
-      ],
-    );
-  }
-
   Widget _buildSplitSection() {
     final data = _splitTableData();
     if (data == null) return const SizedBox.shrink();
@@ -439,6 +365,7 @@ extension _PaceCalculatorPart on _PaceViewState {
   Widget _buildSplitTable(_SplitTableData data) {
     final truncated =
         data.distance / data.split > PaceTableCalculator.maxSplitRows + 1e-9;
+    final gelTexts = _gelRowTexts(data);
 
     return Container(
       key: const ValueKey('pace-split-table'),
@@ -451,40 +378,100 @@ extension _PaceCalculatorPart on _PaceViewState {
         children: [
           Container(
             color: AppColors.surfaceRaised,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             child: Row(
               children: [
-                Expanded(
+                const SizedBox(
+                  width: 58,
                   child: Text(
                     AppStrings.paceSplitTableDistance,
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey, fontSize: 10),
                   ),
                 ),
-                Text(
-                  AppStrings.paceSplitTableTime,
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    AppStrings.paceGelLeftHeader,
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    AppStrings.paceGelRightHeader,
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 11),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const SizedBox(
+                  width: 58,
+                  child: Text(
+                    AppStrings.paceSplitTableTime,
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.grey, fontSize: 10),
+                  ),
                 ),
               ],
             ),
           ),
           for (var index = 0; index < data.points.length; index++)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      data.labelAt(index),
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                  SizedBox(
+                    width: 58,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        data.labelAt(index),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
-                  Text(
-                    PaceTableCalculator.formatClockTime(
-                      data.points[index].seconds,
+                  const SizedBox(width: 6),
+                  Expanded(
+                    flex: 3,
+                    child: _gelCell(
+                      key: 'pace-split-left-$index',
+                      text: gelTexts[index].left,
+                      onTap: () => _editGelLeft(index),
                     ),
-                    style: const TextStyle(
-                      color: AppColors.result,
-                      fontSize: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    flex: 4,
+                    child: _gelCell(
+                      key: 'pace-split-right-$index',
+                      text: gelTexts[index].right,
+                      onTap: () => _editGelRight(index, data),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 58,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Text(
+                        PaceTableCalculator.formatClockTime(
+                          data.points[index].seconds,
+                        ),
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          color: AppColors.result,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -569,6 +556,7 @@ extension _PaceCalculatorPart on _PaceViewState {
         : '(${PaceTableCalculator.formatPaceDelta(breakdown.startPace - data.pace)} '
               '${formatPaceSeconds(breakdown.middlePace)} '
               '${PaceTableCalculator.formatPaceDelta(breakdown.finishPace - data.pace)})';
+    final gelTexts = _gelRowTexts(data);
 
     return PaceSplitPrintData(
       title: AppStrings.paceSplitPrintDocumentTitle,
@@ -586,6 +574,8 @@ extension _PaceCalculatorPart on _PaceViewState {
             '${AppStrings.paceHintKm}',
         splitLine,
         ?paceLine,
+        ?_gelEveryPrintLine(),
+        ?_gelStatsPrintLine(data),
       ],
       points: [
         for (var index = 0; index < data.points.length; index++)
@@ -594,6 +584,8 @@ extension _PaceCalculatorPart on _PaceViewState {
             time: PaceTableCalculator.formatClockTime(
               data.points[index].seconds,
             ),
+            left: gelTexts[index].left,
+            right: gelTexts[index].right,
           ),
       ],
     );

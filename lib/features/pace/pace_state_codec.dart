@@ -1,4 +1,5 @@
 import 'pace_catalog.dart';
+import 'pace_gels.dart';
 import 'pace_table_data.dart';
 
 /// Простое состояние калькулятора Pace в том виде, в каком оно хранится
@@ -17,6 +18,7 @@ class PaceCalculatorState {
     this.splitPercent = '',
     this.startHours = '',
     this.startMinutes = '',
+    this.gels = const PaceGelState(),
   });
 
   /// Восстанавливает поля из JSON, подставляя пустые строки вместо
@@ -36,6 +38,7 @@ class PaceCalculatorState {
       splitPercent: _readString(data['splitPercent']),
       startHours: _readString(data['startHours']),
       startMinutes: _readString(data['startMinutes']),
+      gels: PaceGelState.fromJson(data['gels']),
     );
   }
 
@@ -58,6 +61,9 @@ class PaceCalculatorState {
   final String startHours;
   final String startMinutes;
 
+  /// Настройки гелей, интервал автоматической раскладки и ручные пометки.
+  final PaceGelState gels;
+
   Map<String, dynamic> toJson() {
     return {
       'calc': calc,
@@ -72,6 +78,7 @@ class PaceCalculatorState {
       'splitPercent': splitPercent,
       'startHours': startHours,
       'startMinutes': startMinutes,
+      'gels': gels.toJson(),
     };
   }
 

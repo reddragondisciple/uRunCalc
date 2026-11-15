@@ -292,6 +292,16 @@ extension _PaceInputPart on _PaceViewState {
           _startHours = _appendInteger(_startHours, char, 2);
         case _PaceTopField.startMinutes:
           _startMinutes = _appendInteger(_startMinutes, char, 2);
+        case _PaceTopField.gelMinutes:
+          _gelEveryMinutes = _appendInteger(_gelEveryMinutes, char, 3);
+          if ((parseGelNumber(_gelEveryMinutes) ?? 0) > 0) {
+            _gelEveryKm = '';
+          }
+        case _PaceTopField.gelKm:
+          _gelEveryKm = _appendDecimal(_gelEveryKm, char, maxDecimals: 3);
+          if ((parseGelNumber(_gelEveryKm) ?? 0) > 0) {
+            _gelEveryMinutes = '';
+          }
       }
     });
   }
@@ -395,6 +405,10 @@ extension _PaceInputPart on _PaceViewState {
               _startHours = _removeLast(_startHours);
             case _PaceTopField.startMinutes:
               _startMinutes = _removeLast(_startMinutes);
+            case _PaceTopField.gelMinutes:
+              _gelEveryMinutes = _removeLast(_gelEveryMinutes);
+            case _PaceTopField.gelKm:
+              _gelEveryKm = _removeLast(_gelEveryKm);
           }
         case _PaceFocusKind.tableTime:
           _tableTimes[_focus.tableColumn] = _removeLast(
@@ -459,6 +473,10 @@ extension _PaceInputPart on _PaceViewState {
               _startHours = '';
             case _PaceTopField.startMinutes:
               _startMinutes = '';
+            case _PaceTopField.gelMinutes:
+              _gelEveryMinutes = '';
+            case _PaceTopField.gelKm:
+              _gelEveryKm = '';
           }
         case _PaceFocusKind.tableTime:
           _tableTimes[_focus.tableColumn] = '';

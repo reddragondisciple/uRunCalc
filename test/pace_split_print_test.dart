@@ -35,12 +35,11 @@ void main() {
     final bytes = await buildPaceSplitPdf(_data(44));
     final text = String.fromCharCodes(bytes);
 
-    // 3 столбца по 28 строк минус 5 строк сводки = 79 точек на странице.
     expect(RegExp(r'/Type\s*/Page\b').allMatches(text), hasLength(1));
   });
 
-  test('buildPaceSplitPdf fits 79 points and paginates the 80th', () async {
-    final firstPage = String.fromCharCodes(await buildPaceSplitPdf(_data(79)));
+  test('buildPaceSplitPdf paginates a long table', () async {
+    final firstPage = String.fromCharCodes(await buildPaceSplitPdf(_data(54)));
     expect(RegExp(r'/Type\s*/Page\b').allMatches(firstPage), hasLength(1));
 
     final secondPage = String.fromCharCodes(await buildPaceSplitPdf(_data(80)));

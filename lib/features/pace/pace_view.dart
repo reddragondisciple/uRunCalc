@@ -38,9 +38,12 @@ import 'pace_normatives.dart';
 import 'pace_split_print.dart';
 import 'pace_split_print_controller.dart';
 import 'pace_cells.dart';
+import 'pace_gel_dialogs.dart';
+import 'pace_gels.dart';
 import 'pace_keyboard.dart';
 import 'pace_catalog.dart';
 import 'pace_gpx_import_ui.dart';
+import 'pace_options_controller.dart';
 import 'pace_settings_menu.dart';
 import 'pace_state_codec.dart';
 import 'pace_state_controller.dart';
@@ -50,6 +53,7 @@ import 'worldcover_provider.dart';
 
 part 'pace_calculator_part.dart';
 part 'pace_events_part.dart';
+part 'pace_gels_part.dart';
 part 'pace_input_part.dart';
 part 'pace_mountain_part.dart';
 part 'pace_plan_part.dart';
@@ -72,6 +76,8 @@ enum _PaceTopField {
   splitPercent,
   startHours,
   startMinutes,
+  gelMinutes,
+  gelKm,
 }
 
 class _PrintRequest {
@@ -162,6 +168,7 @@ class PaceView extends StatefulWidget {
     required this.surface,
     this.statusController,
     this.splitPrintController,
+    this.optionsController,
   });
 
   final bool active;
@@ -172,6 +179,9 @@ class PaceView extends StatefulWidget {
 
   /// Кнопка печати раскладки в строке режимов. `null` — кнопки нет.
   final PaceSplitPrintController? splitPrintController;
+
+  /// Кнопка с шестерёнкой рядом с печатью. `null` — кнопки нет.
+  final PaceOptionsController? optionsController;
 
   @override
   State<PaceView> createState() => _PaceViewState();
@@ -215,6 +225,17 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   /// Время старта: часы и минуты. Пустые поля отображаются как 00:00.
   String _startHours = '';
   String _startMinutes = '';
+
+  /// Автоматическая раскладка гелей: интервал в минутах или километрах.
+  /// Одновременно заполнено только одно поле.
+  String _gelEveryMinutes = '';
+  String _gelEveryKm = '';
+
+  /// Настройки простого, изо-, кофегеля и своих гелей.
+  GelSettings _gelSettings = const GelSettings();
+
+  /// Ручные пометки строк таблицы раскладки и выбранное питание.
+  final Map<int, PaceGelRow> _gelRows = {};
 
   int _columns = _baseColumns;
   bool _fitTable = true;
@@ -264,7 +285,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   late final PersistedJsonStore _store = PersistedJsonStore(
     storageKey: _storageKey,
     legacyStorageKey: _isUltra ? null : PaceStateCodec.legacyStorageKey,
-    schemaVersion: 3,
+    schemaVersion: 4,
   );
 
   /// Горный режим текущей таблицы. Хранится в [MountainData] снимка таблицы.
@@ -421,6 +442,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.splitPrintController?.clear();
+    widget.optionsController?.clear();
     _store.dispose();
     super.dispose();
   }
@@ -451,6 +473,7 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
           splitPercent: _splitPercent,
           startHours: _startHours,
           startMinutes: _startMinutes,
+          gels: _gelState,
         ),
       );
     }
@@ -520,6 +543,13 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
     _splitPercent = state.splitPercent;
     _startHours = state.startHours;
     _startMinutes = state.startMinutes;
+    _gelEveryMinutes = state.gels.everyMinutes;
+    _gelEveryKm = state.gels.everyKm;
+    _normalizeGelInterval();
+    _gelSettings = state.gels.settings;
+    _gelRows
+      ..clear()
+      ..addAll(state.gels.rows);
   }
 
   void _applyUltraState(Map<String, dynamic> data) {
@@ -579,12 +609,27 @@ class _PaceViewState extends State<PaceView> with WidgetsBindingObserver {
     });
   }
 
+  /// Шестерёнка опций Pace живёт рядом с печатью в строке режимов.
+  void _scheduleOptionsSync() {
+    final controller = widget.optionsController;
+    if (controller == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!widget.active || _isUltra) {
+        controller.clear();
+        return;
+      }
+      controller.update(available: true, onOpen: _showPaceOptions);
+    });
+  }
+
   Future<void> _requestSplitPrint() => _showSplitPrintDialog();
 
   @override
   Widget build(BuildContext context) {
     _scheduleEnvironmentStatusSync();
     _scheduleSplitPrintSync();
+    _scheduleOptionsSync();
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
 

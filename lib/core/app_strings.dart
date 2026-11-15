@@ -98,6 +98,45 @@ class AppStrings {
   static const String paceHintPace = 'мин/км';
 
   static const String paceCalcSplit = 'Раскладка на';
+  static const String paceOptionsTitle = 'Опции';
+  static const String paceOptionsGels = 'Настроить гели';
+  static const String paceOptionsInvalidSplit =
+      'Раскладка должна быть больше нуля';
+  static const String paceOptionsInvalidStart =
+      'Введите корректное время старта';
+  static const String paceGelsTitle = 'Настройка гелей';
+  static const String paceGelSimple = 'Простой гель';
+  static const String paceGelIso = 'Изогель';
+  static const String paceGelCoffee = 'Кофегель';
+  static const String paceGelCustom = 'Свой гель';
+  static const String paceGelAddCustom = 'Добавить свой гель';
+  static const String paceGelClear = 'Очистить';
+  static const String paceGelDeleteTitle = 'Удалить свой гель';
+  static const String paceGelNewTitle = 'Свой гель';
+  static const String paceGelName = 'Название';
+  static const String paceGelNameRequired = 'Введите название геля';
+  static const String paceGelNameExists = 'Гель с таким названием уже есть';
+  static const String paceGelParameterRequired =
+      'Добавьте хотя бы один параметр';
+  static const String paceGelInvalidNumber = 'Введите корректное количество';
+  static const String paceGelNotConfigured = 'Гели пока не настроены';
+  static const String paceGelOwnNutrient = 'Своё вещество';
+  static const String paceGelUnit = 'Единица';
+  static const String paceGelAmount = 'Количество';
+  static const String paceGelAddNutrient = 'Добавить вещество';
+  static const String paceGelRemoveNutrient = 'Удалить вещество';
+  static const String paceGelNote = 'Заметка';
+  static const String paceGelUnknownOption = 'Неизвестный параметр';
+  static String paceGelDeleteQuestion(String name) => 'Удалить гель «$name»?';
+  static const String paceGelEvery = 'Гели каждые';
+  static const String paceGelEveryMinutes = 'минут';
+  static const String paceGelEveryKm = 'километров';
+  static const String paceGelLeftHeader = 'Метки';
+  static const String paceGelRightHeader = 'Питание';
+  static const String paceGelStats = 'Итого по гелям';
+  static const String paceGelLeftTitle = 'Метки';
+  static const String paceGelRightTitle = 'Питание';
+  static const String paceGelEmpty = '—';
   static const String paceSplitPercent = 'Сплит, %';
   static const String paceSplitPercentHint = '%';
   static const String signToggleKey = '±';

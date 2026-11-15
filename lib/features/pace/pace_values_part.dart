@@ -96,7 +96,9 @@ extension _PaceValuesPart on _PaceViewState {
         field == _PaceTopField.splitDistance ||
         field == _PaceTopField.splitPercent ||
         field == _PaceTopField.startHours ||
-        field == _PaceTopField.startMinutes;
+        field == _PaceTopField.startMinutes ||
+        field == _PaceTopField.gelMinutes ||
+        field == _PaceTopField.gelKm;
     return switch (_calc) {
       _PaceCalc.pace =>
         field == _PaceTopField.distance || _isTimeField(field) || isSplitField,

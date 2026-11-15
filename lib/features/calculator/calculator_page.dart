@@ -13,6 +13,7 @@ import '../../core/value_format.dart';
 import '../../widgets/lazy_indexed_stack.dart';
 import '../info/info_view.dart';
 import '../pace/environment_status.dart';
+import '../pace/pace_options_controller.dart';
 import '../pace/pace_split_print_controller.dart';
 import '../pace/pace_view.dart';
 import '../simple/expression_view.dart';
@@ -78,6 +79,9 @@ class _CalculatorPageState extends State<CalculatorPage>
   /// Кнопка печати раскладки в правом верхнем углу строки режимов.
   final PaceSplitPrintController _splitPrint = PaceSplitPrintController();
 
+  /// Кнопка с шестерёнкой рядом с печатью: опции Pace.
+  final PaceOptionsController _paceOptions = PaceOptionsController();
+
   @override
   void initState() {
     super.initState();
@@ -130,6 +134,7 @@ class _CalculatorPageState extends State<CalculatorPage>
     _flashTimer?.cancel();
     _environmentStatus.dispose();
     _splitPrint.dispose();
+    _paceOptions.dispose();
     super.dispose();
   }
 
@@ -217,6 +222,7 @@ class _CalculatorPageState extends State<CalculatorPage>
                       surface: PaceSurface.pace,
                       statusController: _environmentStatus,
                       splitPrintController: _splitPrint,
+                      optionsController: _paceOptions,
                     ),
                     const TimeView(),
                     _buildExpressionMode(),
@@ -236,6 +242,7 @@ class _CalculatorPageState extends State<CalculatorPage>
       current: _mode,
       environmentStatus: _environmentStatus,
       splitPrintController: _splitPrint,
+      optionsController: _paceOptions,
       onSelected: (mode) {
         setState(() {
           _mode = mode;
@@ -246,6 +253,7 @@ class _CalculatorPageState extends State<CalculatorPage>
         }
         // Печать раскладки есть только в Pace.
         if (mode != CalculatorMode.pace) _splitPrint.clear();
+        if (mode != CalculatorMode.pace) _paceOptions.clear();
         _modeTouched = true;
         _rememberMode();
       },

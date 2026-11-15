@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_strings.dart';
 import '../pace/environment_status.dart';
+import '../pace/pace_options_controller.dart';
 import '../pace/pace_split_print_controller.dart';
 import 'calculator_mode.dart';
 
@@ -14,6 +15,7 @@ class CalculatorModeBar extends StatelessWidget {
     required this.onSelected,
     this.environmentStatus,
     this.splitPrintController,
+    this.optionsController,
   });
 
   final CalculatorMode current;
@@ -24,6 +26,9 @@ class CalculatorModeBar extends StatelessWidget {
 
   /// Кнопка печати раскладки. `null` — кнопки нет.
   final PaceSplitPrintController? splitPrintController;
+
+  /// Кнопка с шестерёнкой опций Pace. `null` — кнопки нет.
+  final PaceOptionsController? optionsController;
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +134,30 @@ class CalculatorModeBar extends StatelessWidget {
                 ),
               ),
             ],
+            if (optionsController != null)
+              AnimatedBuilder(
+                animation: optionsController!,
+                builder: (context, _) {
+                  if (!optionsController!.available) {
+                    return const SizedBox.shrink();
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: IconButton(
+                      key: const ValueKey('pace-options-button'),
+                      tooltip: AppStrings.paceOptionsTitle,
+                      onPressed: () => optionsController!.open(),
+                      icon: const Icon(Icons.settings_outlined, size: 20),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                    ),
+                  );
+                },
+              ),
             if (splitPrintController != null)
               AnimatedBuilder(
                 animation: splitPrintController!,

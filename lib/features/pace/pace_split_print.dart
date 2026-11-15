@@ -8,10 +8,21 @@ import '../../core/app_strings.dart';
 
 /// Одна строка таблицы раскладки для печати.
 class PaceSplitPrintPoint {
-  const PaceSplitPrintPoint({required this.distance, required this.time});
+  const PaceSplitPrintPoint({
+    required this.distance,
+    required this.time,
+    this.left = '',
+    this.right = '',
+  });
 
   final String distance;
   final String time;
+
+  /// Метки строки: `пп, био`.
+  final String left;
+
+  /// Питание строки: `гель, фрукты, вода`.
+  final String right;
 }
 
 /// Данные для печати раскладки по контрольным точкам.
@@ -24,30 +35,36 @@ class PaceSplitPrintData {
 
   final String title;
 
-  /// Сводка (расстояние, темп, время, старт, шаг). Печатается в начале
-  /// первого столбца.
+  /// Сводка (расстояние, темп, время, старт, шаг, гели и статистика).
+  /// Печатается в начале первого столбца.
   final List<String> summary;
 
   final List<PaceSplitPrintPoint> points;
 }
 
-/// Сколько строк помещается в один столбец.
-const int _rowsPerColumn = 28;
-
 /// Сколько столбцов на странице.
-const int _columnsPerPage = 3;
+const int _columnsPerPage = 2;
 
-/// Высота строки таблицы.
-const double _rowHeight = 25;
+/// Высота строки таблицы без переноса.
+const double _rowMinHeight = 22;
 
-/// Ширина ячейки с расстоянием.
-const double _distanceWidth = 74;
+/// Высота заголовка столбца.
+const double _headerHeight = 24;
 
-/// Ширина ячейки со временем.
-const double _timeWidth = 58;
+/// Доступная высота одного столбца.
+const double _columnBodyHeight = 690;
 
-/// Расстояние между чекпойнтом и его временем: 1 см.
-const double _pairGap = PdfPageFormat.cm;
+const double _distanceWidth = 46;
+const double _leftWidth = 58;
+const double _rightWidth = 104;
+const double _timeWidth = 42;
+const double _cellGap = 4;
+
+const double _pointFontSize = 8.5;
+const double _lineHeight = 10.2;
+
+const double _columnInnerWidth =
+    _distanceWidth + _leftWidth + _rightWidth + _timeWidth + _cellGap * 3;
 
 /// Отступ сверху: 2 см.
 const double _topMargin = 2 * PdfPageFormat.cm;
@@ -120,9 +137,7 @@ Future<Uint8List> buildPaceSplitPdf(PaceSplitPrintData data) async {
   return document.save();
 }
 
-/// Делит строки на страницы и столбцы. Сводка занимает первые строки
-/// первого столбца, поэтому на первой странице остаётся место для
-/// `2 * 28 - summary.length` контрольных точек.
+/// Делит строки на страницы и столбцы с учётом высоты переноса.
 List<List<List<_PrintRow>>> _paginate(PaceSplitPrintData data) {
   final rows = <_PrintRow>[
     for (final line in data.summary) _PrintRow.summary(line),
@@ -130,33 +145,43 @@ List<List<List<_PrintRow>>> _paginate(PaceSplitPrintData data) {
   ];
 
   final pages = <List<List<_PrintRow>>>[];
-  final perPage = _rowsPerColumn * _columnsPerPage;
-  for (var start = 0; start < rows.length; start += perPage) {
-    final pageRows = rows.sublist(
-      start,
-      math.min(start + perPage, rows.length),
-    );
-    final columns = <List<_PrintRow>>[];
-    for (var offset = 0; offset < pageRows.length; offset += _rowsPerColumn) {
-      columns.add(
-        pageRows.sublist(
-          offset,
-          math.min(offset + _rowsPerColumn, pageRows.length),
-        ),
-      );
-    }
+  var columns = <List<_PrintRow>>[];
+  var column = <_PrintRow>[];
+  var height = 0.0;
+
+  void finishColumn() {
+    columns.add(column);
+    column = <_PrintRow>[];
+    height = 0;
+  }
+
+  void finishPage() {
+    if (column.isNotEmpty || columns.isEmpty) finishColumn();
     while (columns.length < _columnsPerPage) {
-      columns.add(const <_PrintRow>[]);
+      columns.add(<_PrintRow>[]);
     }
     pages.add(columns);
+    columns = <List<_PrintRow>>[];
+    column = <_PrintRow>[];
+    height = 0;
+  }
+
+  for (final row in rows) {
+    final rowHeight = row.height;
+    if (column.isNotEmpty && height + rowHeight > _columnBodyHeight) {
+      finishColumn();
+      if (columns.length >= _columnsPerPage) finishPage();
+    }
+    column.add(row);
+    height += rowHeight;
+  }
+
+  if (column.isNotEmpty || columns.isNotEmpty || pages.isEmpty) {
+    finishPage();
   }
 
   if (pages.isEmpty) {
-    pages.add(const <List<_PrintRow>>[
-      <_PrintRow>[],
-      <_PrintRow>[],
-      <_PrintRow>[],
-    ]);
+    pages.add(<List<_PrintRow>>[<_PrintRow>[], <_PrintRow>[]]);
   }
 
   return pages;
@@ -167,7 +192,7 @@ pw.Widget _buildColumn(List<_PrintRow> rows) {
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
       pw.Container(
-        height: 22,
+        height: _headerHeight,
         padding: const pw.EdgeInsets.symmetric(horizontal: 4),
         decoration: const pw.BoxDecoration(color: PdfColors.grey300),
         child: pw.Center(
@@ -176,26 +201,22 @@ pw.Widget _buildColumn(List<_PrintRow> rows) {
             children: [
               pw.SizedBox(
                 width: _distanceWidth,
-                child: pw.Text(
-                  AppStrings.paceSplitTableDistance,
-                  style: pw.TextStyle(
-                    fontSize: 11,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey800,
-                  ),
-                ),
+                child: _headerText(AppStrings.paceSplitTableDistance),
               ),
-              pw.SizedBox(width: _pairGap),
+              pw.SizedBox(width: _cellGap),
+              pw.SizedBox(
+                width: _leftWidth,
+                child: _headerText(AppStrings.paceGelLeftHeader),
+              ),
+              pw.SizedBox(width: _cellGap),
+              pw.SizedBox(
+                width: _rightWidth,
+                child: _headerText(AppStrings.paceGelRightHeader),
+              ),
+              pw.SizedBox(width: _cellGap),
               pw.SizedBox(
                 width: _timeWidth,
-                child: pw.Text(
-                  AppStrings.paceSplitTableTime,
-                  style: pw.TextStyle(
-                    fontSize: 11,
-                    fontWeight: pw.FontWeight.bold,
-                    color: PdfColors.grey800,
-                  ),
-                ),
+                child: _headerText(AppStrings.paceSplitTableTime),
               ),
             ],
           ),
@@ -206,12 +227,25 @@ pw.Widget _buildColumn(List<_PrintRow> rows) {
   );
 }
 
+pw.Widget _headerText(String text) {
+  return pw.Text(
+    text,
+    maxLines: 1,
+    overflow: pw.TextOverflow.clip,
+    style: pw.TextStyle(
+      fontSize: 8,
+      fontWeight: pw.FontWeight.bold,
+      color: PdfColors.grey800,
+    ),
+  );
+}
+
 pw.Widget _buildRow(_PrintRow row) {
   final summary = row.summary;
   final point = row.point;
   return pw.Container(
-    height: _rowHeight,
-    padding: const pw.EdgeInsets.symmetric(horizontal: 4),
+    height: row.height,
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
     decoration: const pw.BoxDecoration(
       border: pw.Border(
         bottom: pw.BorderSide(color: PdfColors.grey400, width: 0.4),
@@ -222,37 +256,57 @@ pw.Widget _buildRow(_PrintRow row) {
             alignment: pw.Alignment.centerLeft,
             child: pw.Text(
               summary,
-              maxLines: 1,
-              overflow: pw.TextOverflow.clip,
-              style: pw.TextStyle(
-                fontSize: 12.5,
-                fontWeight: pw.FontWeight.bold,
-              ),
+              style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),
             ),
           )
-        : pw.Center(
-            child: pw.Row(
-              mainAxisSize: pw.MainAxisSize.min,
-              children: [
-                pw.SizedBox(
-                  width: _distanceWidth,
-                  child: pw.Text(
-                    point?.distance ?? '',
-                    style: const pw.TextStyle(fontSize: 13),
-                  ),
+        : pw.Row(
+            mainAxisSize: pw.MainAxisSize.min,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.SizedBox(
+                width: _distanceWidth,
+                child: pw.Text(
+                  point?.distance ?? '',
+                  style: const pw.TextStyle(fontSize: 9),
                 ),
-                pw.SizedBox(width: _pairGap),
-                pw.SizedBox(
-                  width: _timeWidth,
-                  child: pw.Text(
-                    point?.time ?? '',
-                    style: const pw.TextStyle(fontSize: 13),
-                  ),
+              ),
+              pw.SizedBox(width: _cellGap),
+              pw.SizedBox(
+                width: _leftWidth,
+                child: pw.Text(
+                  point?.left ?? '',
+                  style: const pw.TextStyle(fontSize: _pointFontSize),
                 ),
-              ],
-            ),
+              ),
+              pw.SizedBox(width: _cellGap),
+              pw.SizedBox(
+                width: _rightWidth,
+                child: pw.Text(
+                  point?.right ?? '',
+                  style: const pw.TextStyle(fontSize: _pointFontSize),
+                ),
+              ),
+              pw.SizedBox(width: _cellGap),
+              pw.SizedBox(
+                width: _timeWidth,
+                child: pw.Text(
+                  point?.time ?? '',
+                  style: const pw.TextStyle(fontSize: 9),
+                ),
+              ),
+            ],
           ),
   );
+}
+
+int _lineCount(String text, double width, double fontSize) {
+  if (text.isEmpty) return 1;
+  final charsPerLine = math.max(1, (width / (fontSize * 0.55)).floor());
+  var lines = 0;
+  for (final part in text.split('\n')) {
+    lines += math.max(1, (part.length / charsPerLine).ceil());
+  }
+  return math.max(1, lines);
 }
 
 /// Строка печатной раскладки: либо строка сводки, либо контрольная точка.
@@ -263,4 +317,20 @@ class _PrintRow {
 
   final String? summary;
   final PaceSplitPrintPoint? point;
+
+  double get height {
+    final summary = this.summary;
+    if (summary != null) {
+      final lines = _lineCount(summary, _columnInnerWidth, 11);
+      return math.max(_rowMinHeight, lines * 13.0 + 6);
+    }
+    final point = this.point!;
+    final lines = [
+      _lineCount(point.distance, _distanceWidth, 9),
+      _lineCount(point.left, _leftWidth, _pointFontSize),
+      _lineCount(point.right, _rightWidth, _pointFontSize),
+      _lineCount(point.time, _timeWidth, 9),
+    ].reduce(math.max);
+    return math.max(_rowMinHeight, lines * _lineHeight + 6);
+  }
 }
